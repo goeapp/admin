@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GOE Admin</title>
+<!--
+  index_admin_v1_0.html — GOE Admin v1.0 (09-oct-2026)
+  Repo: goeapp/admin → https://goeapp.github.io/admin/ (subir como index.html)
+
+  Administración del stack sobre Supabase (proyecto PWAgoe), solo para el admin global.
+  · Obras:    lista + ficha (datos, apps, miembros por app con su perfil)
+  · Personas: lista + ficha (datos, mails, apps, accesos de solo lectura)
+  · MdT:      usuarios y listas (etiquetas, marcas, tareas, herramientas, config)
+  · Login por código (Supabase Auth), igual que MdT v15.0, con sesión propia (admin-sb-auth).
+  · Todos los cambios se guardan con botón y un resumen para confirmar.
+  · Solo computadora (sin service worker).
+
+  Requiere en Supabase: goe_esquema_v1_0.sql + goe_datos_v1_0.sql + goe_admin_v1_0.sql.
+
+  Changelog
+  v1.0 — primera versión.
+-->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
+<style>
+/* ── TOKENS (mismos de MdT v15.0) ───────────────────────── */
+:root {
+  --bg: #f1f5f9; --surface: #ffffff; --border: #e2e8f0;
+  --accent: #d97706; --accent-border: #92400e; --accent2: #0f172a;
+  --tag-bg: #fef3c7; --tag-fg: #92400e;
+  --text: #1e293b; --muted: #64748b; --success: #16a34a; --danger: #dc2626;
+  --ok-bg: #dcfce7; --ok-fg: #166534; --off-bg: #f1f5f9; --off-fg: #64748b;
+  --warn-bg: #fef3c7; --warn-fg: #92400e; --err-bg: #fee2e2; --err-fg: #991b1b;
+  --sel-bg: #fff7ed;
+  --radius: 12px; --radius-sm: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.10);
+  --header-h: 52px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.5; min-width: 1100px; }
+button, input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+
+/* ── LOGIN / DENIED (de MdT v15.0) ──────────────────────── */
+#login-screen, #denied-screen { display: none; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 24px; }
+.login-box, .denied-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 48px 40px; max-width: 380px; width: 100%; text-align: center; box-shadow: var(--shadow-md); }
+.login-logo  { font-family: 'Bebas Neue', sans-serif; font-size: 2rem; color: var(--accent); letter-spacing: 3px; margin-bottom: 4px; }
+.login-emoji { font-size: 2.4rem; margin-bottom: 12px; display: block; }
+.login-sub   { font-size: .78rem; color: var(--muted); margin-bottom: 32px; }
+.login-paso  { text-align: left; }
+.login-paso label { display: block; font-size: .72rem; font-weight: 600; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; }
+.login-input { width: 100%; font-size: 16px; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: #f8fafc; outline: none; }
+.login-input:focus { border-color: var(--accent); background: #fff; }
+.login-input.codigo { letter-spacing: 6px; font-size: 22px; text-align: center; }
+.login-btn { width: 100%; margin-top: 12px; padding: 10px 16px; border: 1px solid var(--accent-border); border-radius: var(--radius-sm); background: var(--accent); color: #fff; font-size: .85rem; font-weight: 600; }
+.login-btn:disabled { opacity: .55; cursor: wait; }
+.login-btn.sec { background: transparent; color: var(--muted); border: 1px solid var(--border); font-weight: 500; margin-top: 8px; }
+.login-msg { font-size: .76rem; margin-top: 10px; padding: 7px 10px; border-radius: var(--radius-sm); line-height: 1.45; }
+.login-msg:empty { display: none; }
+.login-msg.error { background: var(--err-bg); color: var(--err-fg); }
+.login-msg.info  { background: var(--tag-bg); color: var(--tag-fg); }
+.login-enviado { font-size: .78rem; color: var(--muted); margin-bottom: 12px; line-height: 1.5; }
+.login-enviado b { color: var(--text); }
+.denied-icon  { font-size: 3rem; margin-bottom: 16px; display: block; }
+.denied-title { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+.denied-msg   { font-size: .8rem; color: var(--muted); line-height: 1.6; margin-bottom: 20px; }
+.denied-email { background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 14px; font-size: .78rem; color: var(--muted); margin-bottom: 20px; }
+
+/* ── APP / HEADER ──────────────────────────────────────── */
+#app { display: none; flex-direction: column; height: 100vh; }
+#app-header { height: var(--header-h); background: var(--accent2); display: flex; align-items: center; padding: 0 20px; gap: 14px; flex-shrink: 0; }
+.hdr-logo { font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; color: var(--accent); letter-spacing: 2px; }
+.hdr-version { font-size: .68rem; color: rgba(255,255,255,.35); }
+.hdr-nav { display: flex; gap: 4px; margin-left: 18px; }
+.hdr-nav button { background: transparent; border: 1px solid transparent; color: rgba(255,255,255,.7); padding: 6px 14px; border-radius: var(--radius-sm); font-weight: 500; }
+.hdr-nav button:hover { background: rgba(255,255,255,.08); color: #fff; }
+.hdr-nav button.activa { background: rgba(217,119,6,.18); border-color: var(--accent); color: #fff; }
+.hdr-sep { flex: 1; }
+.hdr-user { font-size: .78rem; color: rgba(255,255,255,.55); }
+.hdr-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; border: none; font-weight: 600; font-size: .8rem; }
+
+/* ── LAYOUT LISTA + FICHA ──────────────────────────────── */
+.vista { flex: 1; display: none; min-height: 0; }
+.vista.activa { display: flex; }
+.col-lista { width: 340px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+.lista-top { padding: 14px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.lista-top .fila { display: flex; gap: 8px; }
+.lista-items { overflow-y: auto; flex: 1; }
+.item { padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; flex-direction: column; gap: 3px; border-left: 3px solid transparent; }
+.item:hover { background: #f8fafc; }
+.item.sel { background: var(--sel-bg); border-left-color: var(--accent); }
+.item-tit { font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.item-sub { font-size: .76rem; color: var(--muted); display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.lista-vacia { padding: 24px 14px; color: var(--muted); font-size: .82rem; text-align: center; }
+.col-ficha { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.ficha-scroll { flex: 1; overflow-y: auto; padding: 20px 24px 28px; }
+.ficha-vacia { margin: auto; color: var(--muted); text-align: center; font-size: .9rem; }
+.ficha-tit { font-family: 'Bebas Neue', sans-serif; font-size: 1.7rem; letter-spacing: 1px; margin-bottom: 2px; display: flex; align-items: center; gap: 10px; }
+.ficha-sub { color: var(--muted); font-size: .8rem; margin-bottom: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px; box-shadow: var(--shadow); }
+.card h3 { font-family: 'Bebas Neue', sans-serif; font-weight: 400; font-size: 1.15rem; letter-spacing: .6px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.card h3 .h3-extra { margin-left: auto; font-family: 'DM Sans', sans-serif; font-size: .8rem; letter-spacing: 0; }
+.nota { font-size: .76rem; color: var(--muted); margin-top: 8px; }
+
+/* ── BARRA DE GUARDADO ─────────────────────────────────── */
+.barra-guardar { border-top: 1px solid var(--border); background: var(--surface); padding: 10px 24px; display: flex; align-items: center; gap: 10px; }
+.barra-guardar .estado { color: var(--muted); font-size: .8rem; margin-right: auto; }
+.barra-guardar .estado.sucio { color: var(--warn-fg); font-weight: 600; }
+
+/* ── FORMULARIOS ───────────────────────────────────────── */
+.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 14px; }
+.campo { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.campo.c2 { grid-column: span 2; } .campo.c4 { grid-column: span 4; }
+.campo label { font-size: .7rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.campo label .req { color: var(--danger); }
+.inp { width: 100%; padding: 8px 10px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: #f8fafc; outline: none; }
+.inp:focus { border-color: var(--accent); background: #fff; }
+.inp:disabled { color: var(--muted); cursor: not-allowed; }
+.inp.cambiado { border-color: #f59e0b; background: #fffbeb; }
+textarea.inp { resize: vertical; min-height: 60px; }
+.check { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; }
+.check input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.check input:disabled { cursor: not-allowed; }
+
+/* ── BOTONES (convención del stack: primario y secundario con borde) ── */
+.btn { padding: 7px 14px; border-radius: var(--radius-sm); border: 1px solid var(--accent-border); background: var(--accent); color: #fff; font-weight: 600; font-size: .8rem; line-height: 1.2; white-space: nowrap; }
+.btn:hover { filter: brightness(1.05); }
+.btn:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+.btn.sec { background: var(--surface); color: var(--text); border-color: #475569; font-weight: 500; }
+.btn.peligro { background: var(--danger); border-color: #991b1b; }
+.btn.chico { padding: 4px 10px; font-size: .74rem; }
+.btn-icono { background: transparent; border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: .8rem; color: var(--muted); }
+.btn-icono:hover { border-color: #475569; color: var(--text); }
+.btn-icono.peligro:hover { border-color: var(--danger); color: var(--danger); }
+.btn-icono:disabled { opacity: .35; cursor: not-allowed; }
+
+/* ── CHIPS ─────────────────────────────────────────────── */
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font-size: .7rem; font-weight: 600; background: var(--off-bg); color: var(--off-fg); border: 1px solid transparent; white-space: nowrap; }
+.chip.ok { background: var(--ok-bg); color: var(--ok-fg); }
+.chip.warn { background: var(--warn-bg); color: var(--warn-fg); }
+.chip.err { background: var(--err-bg); color: var(--err-fg); }
+.chip.app { background: #e0e7ff; color: #3730a3; }
+.chip.app.inactiva { background: var(--off-bg); color: var(--off-fg); text-decoration: line-through; }
+.chip.admin { background: var(--accent2); color: #fbbf24; }
+
+/* ── TABLAS ────────────────────────────────────────────── */
+table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
+.tabla th { text-align: left; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.tabla td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.tabla tr:last-child td { border-bottom: none; }
+.tabla td.acciones { text-align: right; white-space: nowrap; width: 1%; }
+.tabla tr.nuevo td { background: #f0fdf4; }
+.tabla tr.cambiado td { background: #fffbeb; }
+.tabla tr.quitado td { background: #fef2f2; color: var(--muted); text-decoration: line-through; }
+.tabla tr.quitado td.acciones { text-decoration: none; }
+.tabla .inp { padding: 5px 8px; }
+.tabla tr.arrastrando td { opacity: .4; }
+.tabla tr.sobre td { border-top: 2px solid var(--accent); }
+.asa { cursor: grab; color: #94a3b8; width: 22px; user-select: none; }
+.agregar-fila { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+.agregar-fila .inp { max-width: 320px; }
+
+/* ── PESTAÑAS ──────────────────────────────────────────── */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.tabs button { background: transparent; border: none; border-bottom: 2px solid transparent; padding: 7px 14px; color: var(--muted); font-weight: 500; margin-bottom: -1px; }
+.tabs button.activa { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.tabs button .cnt { font-size: .7rem; color: var(--muted); margin-left: 4px; }
+
+/* ── MdT ───────────────────────────────────────────────── */
+.mdt-wrap { flex: 1; overflow-y: auto; padding: 20px 24px; }
+.mdt-wrap .card { max-width: 1000px; }
+.swatch { display: inline-block; padding: 1px 10px; border-radius: 999px; font-size: .74rem; font-weight: 600; border: 1px solid; }
+.colores { display: flex; flex-wrap: wrap; gap: 6px; }
+.colores label { cursor: pointer; }
+.colores input { display: none; }
+.colores input:checked + .swatch { outline: 2px solid var(--accent2); outline-offset: 2px; }
+.barra-orden { display: flex; align-items: center; gap: 10px; background: var(--warn-bg); color: var(--warn-fg); padding: 8px 12px; border-radius: var(--radius-sm); margin-bottom: 12px; font-size: .8rem; font-weight: 600; }
+.barra-orden span { margin-right: auto; }
+
+/* ── MODAL ─────────────────────────────────────────────── */
+#modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: none; align-items: center; justify-content: center; z-index: 50; }
+#modal-overlay.abierto { display: flex; }
+.modal { background: var(--surface); border-radius: var(--radius); box-shadow: 0 20px 50px rgba(0,0,0,.25); width: 560px; max-width: calc(100vw - 32px); max-height: calc(100vh - 60px); display: flex; flex-direction: column; }
+.modal-head { padding: 16px 20px 6px; font-family: 'Bebas Neue', sans-serif; font-size: 1.35rem; letter-spacing: .6px; display: flex; align-items: center; gap: 8px; }
+.modal-body { padding: 6px 20px 14px; overflow-y: auto; font-size: .86rem; }
+.modal-foot { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+.resumen { list-style: none; display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.resumen li { padding: 5px 10px; border-radius: 6px; background: #f8fafc; border-left: 3px solid #94a3b8; }
+.resumen li.mas { border-left-color: var(--success); }
+.resumen li.menos { border-left-color: var(--danger); }
+.resumen li.cambio { border-left-color: #f59e0b; }
+.resumen li .aviso { display: block; font-size: .74rem; color: var(--warn-fg); margin-top: 2px; }
+.modal .grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+.modal .campo.c2 { grid-column: span 2; }
+.modal .err { color: var(--err-fg); background: var(--err-bg); border-radius: 6px; padding: 6px 10px; margin-top: 10px; font-size: .78rem; }
+
+/* ── TOAST / CARGA ─────────────────────────────────────── */
+#toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--accent2); color: #fff; padding: 10px 18px; border-radius: var(--radius-sm); font-size: .82rem; opacity: 0; pointer-events: none; transition: all .25s; z-index: 60; box-shadow: var(--shadow-md); }
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.error { background: var(--danger); }
+.cargando { display: flex; align-items: center; gap: 10px; color: var(--muted); margin: auto; }
+.spinner { width: 18px; height: 18px; border: 2.5px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: gira .8s linear infinite; }
+@keyframes gira { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- LOGIN (mismo flujo que MdT v15.0) -->
+<div id="login-screen">
+  <div class="login-box">
+    <span class="login-emoji">🛠️</span>
+    <div class="login-logo">GOE ADMIN</div>
+    <div class="login-sub" id="login-version">Administración del stack</div>
+    <div class="login-paso" id="login-paso-email">
+      <label for="login-email">Email</label>
+      <input class="login-input" id="login-email" type="email" autocomplete="email">
+      <button class="login-btn" id="login-btn-enviar" type="button">Enviar código</button>
+      <div class="login-msg" id="login-msg-email"></div>
+    </div>
+    <div class="login-paso" id="login-paso-codigo" hidden>
+      <div class="login-enviado">Te mandamos un código a <b id="login-email-enviado"></b>. Revisá también Spam.</div>
+      <label for="login-codigo">Código</label>
+      <input class="login-input codigo" id="login-codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="10">
+      <button class="login-btn" id="login-btn-validar" type="button">Ingresar</button>
+      <button class="login-btn sec" id="login-btn-volver" type="button">Cambiar email</button>
+      <div class="login-msg" id="login-msg-codigo"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SIN PERMISO -->
+<div id="denied-screen">
+  <div class="denied-box">
+    <span class="denied-icon">🔒</span>
+    <div class="denied-title">Solo para el administrador global</div>
+    <div class="denied-msg">Esta cuenta no administra el stack.<br>GOE Admin es solo para el admin global.</div>
+    <div class="denied-email" id="denied-email"></div>
+    <button class="btn sec" type="button" onclick="cerrarSesion()">Cerrar sesión</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <header id="app-header">
+    <span style="font-size:1.25rem">🛠️</span>
+    <span class="hdr-logo">GOE ADMIN</span>
+    <span class="hdr-version" id="hdr-version"></span>
+    <nav class="hdr-nav">
+      <button type="button" data-vista="obras">Obras</button>
+      <button type="button" data-vista="personas">Personas</button>
+      <button type="button" data-vista="mdt">MdT</button>
+    </nav>
+    <span class="hdr-sep"></span>
+    <span class="hdr-user" id="hdr-user"></span>
+    <button class="hdr-avatar" id="hdr-avatar" type="button" title="Cerrar sesión en este dispositivo"></button>
+  </header>
+
+  <!-- OBRAS -->
+  <section class="vista" id="vista-obras">
+    <aside class="col-lista">
+      <div class="lista-top">
+        <div class="fila">
+          <input class="inp" id="obras-buscar" placeholder="Buscar por código, nombre o cliente">
+          <button class="btn" id="obras-nueva" type="button">+ Nueva</button>
+        </div>
+        <select class="inp" id="obras-filtro-estado">
+          <option value="">Todos los estados</option>
+          <option value="oferta">Oferta</option>
+          <option value="activa">Activa</option>
+          <option value="cerrada">Cerrada</option>
+          <option value="archivada">Archivada</option>
+        </select>
+      </div>
+      <div class="lista-items" id="obras-lista"></div>
+    </aside>
+    <div class="col-ficha" id="obra-ficha"><div class="ficha-vacia">Elegí una obra de la lista.</div></div>
+  </section>
+
+  <!-- PERSONAS -->
+  <section class="vista" id="vista-personas">
+    <aside class="col-lista">
+      <div class="lista-top">
+        <div class="fila">
+          <input class="inp" id="personas-buscar" placeholder="Buscar por nombre o mail">
+          <button class="btn" id="personas-nueva" type="button">+ Nueva</button>
+        </div>
+        <label class="check"><input type="checkbox" id="personas-ver-inactivas"> Ver también las inactivas</label>
+      </div>
+      <div class="lista-items" id="personas-lista"></div>
+    </aside>
+    <div class="col-ficha" id="persona-ficha"><div class="ficha-vacia">Elegí una persona de la lista.</div></div>
+  </section>
+
+  <!-- MdT -->
+  <section class="vista" id="vista-mdt">
+    <div class="mdt-wrap">
+      <div class="card">
+        <h3>Mesa de Trabajo<span class="h3-extra nota" style="margin-top:0">Lo que cambies acá lo ve MdT la próxima vez que se abra.</span></h3>
+        <div class="tabs" id="mdt-tabs"></div>
+        <div id="mdt-contenido"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- MODAL GENÉRICO -->
+<div id="modal-overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-head" id="modal-tit"></div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+/* ════════════════════════════════════════════════════════
+   CONFIGURACIÓN
+════════════════════════════════════════════════════════ */
+const VERSION_UI     = 'v1.0';
+const SUPABASE_URL   = 'https://uhuftsxrzwhmvzygcuvp.supabase.co';
+const SUPABASE_KEY   = 'sb_publishable_TCibRAnzgaDIbn_MIirw6w_FltKG8X3';
+const EMAIL_SUGERIDO = 'goecdg@gmail.com';
+
+// Sesión propia de GOE Admin: todas las PWA viven en goeapp.github.io (mismo localStorage)
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, storageKey: 'admin-sb-auth' }
+});
+
+// Apps que usan obras (MdT y Admin no tienen obras)
+const APPS_OBRA  = ['bdc', 'pk', 'lo'];
+const APP_CORTO  = { bdc: 'BDC', pk: 'PreKOM', lo: 'LO', mdt: 'MdT', admin: 'Admin' };
+const ESTADOS    = { oferta: 'Oferta', activa: 'Activa', cerrada: 'Cerrada', archivada: 'Archivada' };
+const ESTADO_CHIP = { oferta: 'warn', activa: 'ok', cerrada: '', archivada: '' };
+const CAMPOS_OBRA = [
+  { k: 'codigo',          t: 'Código',          req: true,  tipo: 'text', ancho: 1 },
+  { k: 'nombre_corto',    t: 'Nombre corto',    req: true,  tipo: 'text', ancho: 1 },
+  { k: 'estado',          t: 'Estado',          req: true,  tipo: 'estado', ancho: 1 },
+  { k: 'cliente',         t: 'Cliente',         tipo: 'text', ancho: 1 },
+  { k: 'nombre',          t: 'Nombre largo',    tipo: 'text', ancho: 2 },
+  { k: 'ubicacion',       t: 'Ubicación',       tipo: 'text', ancho: 1 },
+  { k: 'direccion',       t: 'Dirección',       tipo: 'text', ancho: 1 },
+  { k: 'inicio_previsto', t: 'Inicio previsto', tipo: 'date', ancho: 1 },
+  { k: 'fin_previsto',    t: 'Fin previsto',    tipo: 'date', ancho: 1 },
+  { k: 'inicio_real',     t: 'Inicio real',     tipo: 'date', ancho: 1 },
+  { k: 'fin_real',        t: 'Fin real',        tipo: 'date', ancho: 1 },
+  { k: 'observaciones',   t: 'Observaciones',   tipo: 'area', ancho: 4 },
+];
+// Colores de marca de MdT (mismo mapa que index_mdt_v15_0.html)
+const MARCA_COLORS = {
+  red: { bg: '#fee2e2', fg: '#991b1b', border: '#fca5a5' }, orange: { bg: '#ffedd5', fg: '#9a3412', border: '#fdba74' },
+  yellow: { bg: '#fef9c3', fg: '#854d0e', border: '#fde047' }, green: { bg: '#dcfce7', fg: '#166534', border: '#86efac' },
+  blue: { bg: '#dbeafe', fg: '#1e40af', border: '#93c5fd' }, indigo: { bg: '#e0e7ff', fg: '#3730a3', border: '#a5b4fc' },
+  purple: { bg: '#f3e8ff', fg: '#6b21a8', border: '#d8b4fe' }, pink: { bg: '#fce7f3', fg: '#9d174d', border: '#f9a8d4' },
+  teal: { bg: '#ccfbf1', fg: '#134e4a', border: '#5eead4' }, gray: { bg: '#f1f5f9', fg: '#475569', border: '#cbd5e1' },
+};
+
+/* ════════════════════════════════════════════════════════
+   ESTADO
+════════════════════════════════════════════════════════ */
+const D = { apps: [], perfiles: [], obras: [], obraApps: [], personas: [], mails: [], appUsuarios: [], accesos: [] };
+const st = {
+  email: '', vista: 'obras', appIniciada: false,
+  obraSel: null,    obraEd: null,      // obraEd = { nueva, orig, w, tabApp }
+  personaSel: null, personaEd: null,   // personaEd = { nueva, orig, w }
+  mdtTab: 'usuarios', mdt: {}, mdtOrden: null,  // mdtOrden = filas reordenadas sin guardar
+};
+let emailPendiente = '';
+
+/* ════════════════════════════════════════════════════════
+   UTILIDADES
+════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function toast(msg, error) {
+  const t = $('toast'); t.textContent = msg; t.className = error ? 'error show' : 'show';
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.className = error ? 'error' : '', error ? 5000 : 2600);
+}
+function vacio(v) { return v == null || String(v).trim() === ''; }
+function norm(v) { return vacio(v) ? null : String(v).trim(); }
+function fmtFecha(d) { if (!d) return '—'; const [y, m, dd] = d.split('-'); return `${dd}/${m}/${y}`; }
+function sinAcentos(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+function clonar(o) { return JSON.parse(JSON.stringify(o)); }
+function uuid() { return crypto.randomUUID(); }
+function emailValido(e) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e); }
+
+function textoError(err) {
+  const m = (err && (err.message || err.msg || err.details)) || String(err);
+  if (/goe_obras_codigo_key/.test(m)) return 'Ya existe una obra con ese código.';
+  if (/goe_persona_mails_pkey/.test(m)) return 'Ese mail ya está cargado (en esta u otra persona).';
+  if (/un_admin_global/.test(m)) return 'Ya hay un admin global: la base admite uno solo.';
+  if (/goe_persona_mails_email_check/.test(m)) return 'El mail no es válido (tiene que ir en minúscula).';
+  if (/mdt_(etiquetas|marcas)_nombre_key/.test(m)) return 'Ya existe un ítem con ese nombre.';
+  if (/mdt_usuarios_pkey/.test(m)) return 'Ese mail ya es usuario de MdT.';
+  if (/JWT|session|token/i.test(m)) return 'La sesión venció. Volvé a ingresar.';
+  if (/Failed to fetch|NetworkError|network/i.test(m)) return 'Sin conexión con la base.';
+  if (/row-level security|permission denied|42501/i.test(m)) return 'Sin permiso para esa operación.';
+  return m;
+}
+async function q(promesa) {
+  const { data, error } = await promesa;
+  if (error) throw error;
+  return data;
+}
+
+// Nombres legibles
+const persona   = id => D.personas.find(p => p.id === id);
+const obra      = id => D.obras.find(o => o.id === id);
+const nombreP   = id => (persona(id) || {}).nombre_apellido || '¿?';
+const mailPpal  = id => ((D.mails.find(m => m.persona_id === id && m.principal) || D.mails.find(m => m.persona_id === id)) || {}).email || '';
+const etiqObra  = o => o ? `${o.codigo} ${o.nombre_corto}` : '¿?';
+const perfilesDe = app => D.perfiles.filter(p => p.app === app).sort((a, b) => a.nivel - b.nivel || a.perfil.localeCompare(b.perfil));
+const adminGlobal = () => D.personas.find(p => p.es_admin_global);
+
+/* ════════════════════════════════════════════════════════
+   MODAL (Promise) — confirmación con resumen y formularios
+════════════════════════════════════════════════════════ */
+function abrirModal({ titulo, html, botones, alAbrir }) {
+  return new Promise(resolve => {
+    $('modal-tit').innerHTML = titulo;
+    $('modal-body').innerHTML = html;
+    const foot = $('modal-foot'); foot.innerHTML = '';
+    const cerrar = valor => { $('modal-overlay').classList.remove('abierto'); document.removeEventListener('keydown', teclas); resolve(valor); };
+    botones.forEach(b => {
+      const el = document.createElement('button');
+      el.type = 'button'; el.className = 'btn ' + (b.clase || ''); el.textContent = b.texto;
+      el.onclick = async () => {
+        if (b.antes) { const ok = await b.antes(el); if (!ok) return; }
+        cerrar(b.valor);
+      };
+      foot.appendChild(el);
+    });
+    const teclas = e => { if (e.key === 'Escape') cerrar(false); };
+    document.addEventListener('keydown', teclas);
+    $('modal-overlay').onclick = e => { if (e.target.id === 'modal-overlay') cerrar(false); };
+    $('modal-overlay').classList.add('abierto');
+    if (alAbrir) alAbrir();
+  });
+}
+function confirmar(titulo, items, { textoOk = 'Confirmar', peligro = false, intro = '' } = {}) {
+  const lis = items.map(it => `<li class="${it.tipo || ''}">${it.html}${it.aviso ? `<span class="aviso">⚠ ${it.aviso}</span>` : ''}</li>`).join('');
+  return abrirModal({
+    titulo,
+    html: (intro ? `<div>${intro}</div>` : '') + (items.length ? `<ul class="resumen">${lis}</ul>` : ''),
+    botones: [{ texto: 'Cancelar', clase: 'sec', valor: false }, { texto: textoOk, clase: peligro ? 'peligro' : '', valor: true }],
+  });
+}
+function avisar(titulo, html) {
+  return abrirModal({ titulo, html, botones: [{ texto: 'Aceptar', valor: true }] });
+}
+
+/* ════════════════════════════════════════════════════════
+   LOGIN (mismo flujo que MdT v15.0)
+════════════════════════════════════════════════════════ */
+function mostrarPasoLogin(p) { $('login-paso-email').hidden = p !== 'email'; $('login-paso-codigo').hidden = p !== 'codigo'; }
+function mostrarLoginMsg(id, tipo, texto) { const el = $(id); el.className = 'login-msg ' + (tipo || ''); el.textContent = texto || ''; }
+function traducirErrorAuth(err) {
+  const m = (err && (err.message || err.msg)) || String(err);
+  if (/rate limit|too many|security purposes/i.test(m)) return 'Demasiados pedidos de código seguidos. Esperá un minuto y probá de nuevo.';
+  if (/expired|invalid/i.test(m)) return 'Código incorrecto o vencido.';
+  return m;
+}
+function mostrarPantalla(cual) {
+  $('login-screen').style.display  = cual === 'login'  ? 'flex' : 'none';
+  $('denied-screen').style.display = cual === 'denied' ? 'flex' : 'none';
+  $('app').style.display           = cual === 'app'    ? 'flex' : 'none';
+}
+function mostrarLogin() {
+  mostrarPantalla('login');
+  if (!$('login-email').value) $('login-email').value = EMAIL_SUGERIDO;
+  mostrarPasoLogin('email');
+}
+async function enviarCodigo() {
+  const email = $('login-email').value.trim().toLowerCase();
+  if (!emailValido(email)) { mostrarLoginMsg('login-msg-email', 'error', 'Ingresá un email válido.'); return; }
+  $('login-btn-enviar').disabled = true;
+  mostrarLoginMsg('login-msg-email', 'info', 'Enviando código…');
+  const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+  $('login-btn-enviar').disabled = false;
+  if (error) { console.error('[signInWithOtp]', error); mostrarLoginMsg('login-msg-email', 'error', traducirErrorAuth(error)); return; }
+  emailPendiente = email;
+  mostrarLoginMsg('login-msg-email', '', ''); mostrarLoginMsg('login-msg-codigo', '', '');
+  $('login-email-enviado').textContent = email; $('login-codigo').value = '';
+  mostrarPasoLogin('codigo'); $('login-codigo').focus();
+}
+async function validarCodigo() {
+  const token = $('login-codigo').value.replace(/\D/g, '');
+  if (token.length < 6) { mostrarLoginMsg('login-msg-codigo', 'error', 'El código tiene al menos 6 dígitos.'); return; }
+  $('login-btn-validar').disabled = true;
+  mostrarLoginMsg('login-msg-codigo', 'info', 'Validando…');
+  const { data, error } = await sb.auth.verifyOtp({ email: emailPendiente, token, type: 'email' });
+  $('login-btn-validar').disabled = false;
+  if (error) { console.error('[verifyOtp]', error); mostrarLoginMsg('login-msg-codigo', 'error', traducirErrorAuth(error)); return; }
+  mostrarLoginMsg('login-msg-codigo', '', '');
+  await entrarConSesion(data.session);
+}
+// Sesión válida → ¿es el admin global?
+async function entrarConSesion(session) {
+  const email = (session.user.email || '').toLowerCase();
+  const { data, error } = await sb.rpc('goe_es_admin_global');
+  if (error) {
+    console.error('[goe_es_admin_global]', error);
+    mostrarLogin(); mostrarLoginMsg('login-msg-email', 'error', 'No se pudo verificar el acceso: ' + textoError(error));
+    return;
+  }
+  if (data !== true) { mostrarPantalla('denied'); $('denied-email').textContent = email; return; }
+  st.email = email;
+  await iniciarApp();
+}
+async function cerrarSesion() {
+  try { await sb.auth.signOut({ scope: 'local' }); } catch (e) { console.warn('[signOut]', e); }
+  st.appIniciada = false;
+  mostrarLogin();
+}
+
+/* ════════════════════════════════════════════════════════
+   DATOS
+════════════════════════════════════════════════════════ */
+async function cargarDatos() {
+  const [apps, perfiles, obras, obraApps, personas, mails, appUsuarios, accesos] = await Promise.all([
+    q(sb.from('goe_apps').select('*').order('app')),
+    q(sb.from('goe_perfiles').select('*')),
+    q(sb.from('goe_obras').select('*').order('codigo')),
+    q(sb.from('goe_obra_apps').select('*')),
+    q(sb.from('goe_personas').select('*').order('nombre_apellido')),
+    q(sb.from('goe_persona_mails').select('*').order('email')),
+    q(sb.from('goe_app_usuarios').select('*')),
+    q(sb.from('goe_accesos').select('*')),
+  ]);
+  Object.assign(D, { apps, perfiles, obras, obraApps, personas, mails, appUsuarios, accesos });
+}
+
+/* ════════════════════════════════════════════════════════
+   NAVEGACIÓN (con aviso de cambios sin guardar)
+════════════════════════════════════════════════════════ */
+function haySinGuardar() {
+  return (st.obraEd && cambiosObra().length > 0) || (st.personaEd && cambiosPersona().length > 0) || !!st.mdtOrden;
+}
+async function puedoSalir() {
+  if (!haySinGuardar()) return true;
+  return confirmar('Cambios sin guardar', [], { intro: 'Hay cambios sin guardar en la ficha abierta. ¿Descartarlos?', textoOk: 'Descartar cambios', peligro: true });
+}
+async function irVista(v) {
+  if (v === st.vista && st.appIniciada) return;
+  if (!(await puedoSalir())) return;
+  st.obraEd = null; st.personaEd = null; st.mdtOrden = null;
+  st.vista = v;
+  document.querySelectorAll('.hdr-nav button').forEach(b => b.classList.toggle('activa', b.dataset.vista === v));
+  document.querySelectorAll('.vista').forEach(s => s.classList.toggle('activa', s.id === 'vista-' + v));
+  if (v === 'obras') { renderListaObras(); st.obraSel ? abrirObra(st.obraSel) : vaciarFicha('obra-ficha', 'Elegí una obra de la lista.'); }
+  if (v === 'personas') { renderListaPersonas(); st.personaSel ? abrirPersona(st.personaSel) : vaciarFicha('persona-ficha', 'Elegí una persona de la lista.'); }
+  if (v === 'mdt') renderMdt();
+}
+function vaciarFicha(id, txt) { $(id).innerHTML = `<div class="ficha-vacia">${esc(txt)}</div>`; }
+
+async function iniciarApp() {
+  mostrarPantalla('app');
+  $('hdr-version').textContent = VERSION_UI;
+  $('hdr-user').textContent = st.email;
+  $('hdr-avatar').textContent = (st.email[0] || '?').toUpperCase();
+  $('obra-ficha').innerHTML = '<div class="cargando"><div class="spinner"></div>Cargando…</div>';
+  try { await cargarDatos(); }
+  catch (e) { console.error('[cargarDatos]', e); toast('No se pudieron cargar los datos: ' + textoError(e), true); return; }
+  st.appIniciada = false; st.vista = '';
+  await irVista('obras');
+  st.appIniciada = true;
+}
+
+/* ════════════════════════════════════════════════════════
+   OBRAS — lista
+════════════════════════════════════════════════════════ */
+function appsDeObra(id) { return D.obraApps.filter(a => a.obra_id === id).sort((a, b) => APPS_OBRA.indexOf(a.app) - APPS_OBRA.indexOf(b.app)); }
+function renderListaObras() {
+  const txt = sinAcentos($('obras-buscar').value), est = $('obras-filtro-estado').value;
+  const lista = D.obras.filter(o =>
+    (!est || o.estado === est) &&
+    (!txt || sinAcentos([o.codigo, o.nombre_corto, o.nombre, o.cliente].join(' ')).includes(txt)));
+  const nueva = st.obraEd && st.obraEd.nueva
+    ? `<div class="item sel"><div class="item-tit">Obra nueva</div><div class="item-sub">sin guardar</div></div>` : '';
+  $('obras-lista').innerHTML = nueva + (lista.length ? lista.map(o => `
+    <div class="item ${o.id === st.obraSel && !(st.obraEd && st.obraEd.nueva) ? 'sel' : ''}" data-id="${o.id}">
+      <div class="item-tit">${esc(o.codigo)} ${esc(o.nombre_corto)} <span class="chip ${ESTADO_CHIP[o.estado]}">${ESTADOS[o.estado]}</span></div>
+      <div class="item-sub">${[o.nombre, o.cliente].filter(x => !vacio(x)).map(esc).join(' · ')}</div>
+      <div class="item-sub">${appsDeObra(o.id).map(a => `<span class="chip app ${a.activa ? '' : 'inactiva'}">${APP_CORTO[a.app]}</span>`).join('') || '<span class="chip">sin apps</span>'}</div>
+    </div>`).join('') : '<div class="lista-vacia">No hay obras con ese filtro.</div>');
+  $('obras-lista').querySelectorAll('.item[data-id]').forEach(el => el.onclick = () => seleccionarObra(el.dataset.id));
+}
+async function seleccionarObra(id) {
+  if (st.obraEd && !st.obraEd.nueva && st.obraEd.orig.datos.id === id) return;
+  if (!(await puedoSalir())) return;
+  abrirObra(id);
+}
+
+/* ════════════════════════════════════════════════════════
+   OBRAS — ficha (modelo de edición)
+════════════════════════════════════════════════════════ */
+function modeloObra(o) {
+  const m = { datos: {}, apps: {}, miembros: {} };
+  CAMPOS_OBRA.forEach(c => m.datos[c.k] = o ? (o[c.k] ?? '') : (c.k === 'estado' ? 'oferta' : ''));
+  m.datos.id = o ? o.id : uuid();
+  APPS_OBRA.forEach(app => {
+    const oa = o && D.obraApps.find(a => a.obra_id === o.id && a.app === app);
+    m.apps[app] = { presente: !!oa, activa: oa ? oa.activa : false };
+    m.miembros[app] = o ? D.accesos.filter(a => a.obra_id === o.id && a.app === app)
+      .map(a => ({ persona_id: a.persona_id, perfil: a.perfil }))
+      .sort((a, b) => nombreP(a.persona_id).localeCompare(nombreP(b.persona_id))) : [];
+  });
+  return m;
+}
+function abrirObra(id) {
+  const o = id ? obra(id) : null;
+  if (id && !o) { st.obraSel = null; vaciarFicha('obra-ficha', 'La obra ya no está.'); return; }
+  const orig = modeloObra(o);
+  st.obraSel = id; st.obraEd = { nueva: !id, orig, w: clonar(orig), tabApp: null };
+  const activas = APPS_OBRA.filter(a => orig.apps[a].presente);
+  st.obraEd.tabApp = activas[0] || null;
+  renderFichaObra();
+  renderListaObras();
+}
+async function nuevaObra() {
+  if (!(await puedoSalir())) return;
+  abrirObra(null);
+  const inp = document.querySelector('#obra-ficha [data-k="codigo"]'); if (inp) inp.focus();
+}
+
+function renderFichaObra() {
+  const ed = st.obraEd, w = ed.w, o = ed.orig;
+  const campos = CAMPOS_OBRA.map(c => {
+    const v = w.datos[c.k] ?? '';
+    const cls = `inp ${String(v) !== String(o.datos[c.k] ?? '') ? 'cambiado' : ''}`;
+    let input;
+    if (c.tipo === 'estado') input = `<select class="${cls}" data-k="${c.k}">${Object.entries(ESTADOS).map(([k, t]) => `<option value="${k}" ${v === k ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
+    else if (c.tipo === 'area') input = `<textarea class="${cls}" data-k="${c.k}" rows="2">${esc(v)}</textarea>`;
+    else input = `<input class="${cls}" data-k="${c.k}" type="${c.tipo === 'date' ? 'date' : 'text'}" value="${esc(v)}">`;
+    return `<div class="campo ${c.ancho === 2 ? 'c2' : c.ancho === 4 ? 'c4' : ''}"><label>${c.t}${c.req ? ' <span class="req">*</span>' : ''}</label>${input}</div>`;
+  }).join('');
+
+  const apps = APPS_OBRA.map(app => {
+    const a = w.apps[app], on = a.presente && a.activa, oa = o.apps[app];
+    const cambio = (a.presente && a.activa) !== (oa.presente && oa.activa);
+    const extra = a.presente && !a.activa ? ' <span class="chip">inactiva en la app</span>' : '';
+    return `<label class="check" style="margin-right:22px"><input type="checkbox" data-app="${app}" ${on ? 'checked' : ''}>
+      <b style="${cambio ? 'color:var(--warn-fg)' : ''}">${APP_CORTO[app]}</b>${extra}</label>`;
+  }).join('');
+
+  const appsMiembros = APPS_OBRA.filter(app => w.apps[app].presente && w.apps[app].activa);
+  if (!appsMiembros.includes(ed.tabApp)) ed.tabApp = appsMiembros[0] || null;
+  const tabs = appsMiembros.map(app => `<button type="button" data-tab="${app}" class="${app === ed.tabApp ? 'activa' : ''}">${APP_CORTO[app]}<span class="cnt">${w.miembros[app].length}</span></button>`).join('');
+
+  const titulo = ed.nueva ? 'Obra nueva' : `${esc(o.datos.codigo)} ${esc(o.datos.nombre_corto)}`;
+  const ag = adminGlobal();
+  $('obra-ficha').innerHTML = `
+    <div class="ficha-scroll">
+      <div class="ficha-tit">${titulo} ${ed.nueva ? '' : `<span class="chip ${ESTADO_CHIP[o.datos.estado]}">${ESTADOS[o.datos.estado]}</span>`}</div>
+      <div class="ficha-sub">${ed.nueva ? 'Completá al menos código y nombre corto.' : 'El código se puede cambiar: todo está conectado por un ID interno que no cambia.'}</div>
+      <div class="card"><h3>Datos</h3><div class="grid">${campos}</div></div>
+      <div class="card"><h3>Apps</h3><div>${apps}</div>
+        <div class="nota">Destildar una app no borra nada: la obra queda inactiva en esa app y se puede volver a activar.</div></div>
+      <div class="card"><h3>Miembros</h3>
+        ${appsMiembros.length ? `<div class="tabs" id="obra-tabs">${tabs}</div><div id="obra-miembros"></div>` : '<div class="nota">Tildá al menos una app para cargar miembros.</div>'}
+        ${ag ? `<div class="nota">${esc(ag.nombre_apellido)} es admin global: administra todas las obras sin figurar en la lista.</div>` : ''}
+      </div>
+    </div>
+    <div class="barra-guardar">
+      <span class="estado" id="obra-estado"></span>
+      <button class="btn sec" id="obra-descartar" type="button">Descartar</button>
+      <button class="btn" id="obra-guardar" type="button">Guardar cambios</button>
+    </div>`;
+
+  $('obra-ficha').querySelectorAll('[data-k]').forEach(el => el.oninput = el.onchange = () => {
+    w.datos[el.dataset.k] = el.value;
+    el.classList.toggle('cambiado', String(el.value) !== String(o.datos[el.dataset.k] ?? ''));
+    actualizarBarraObra();
+  });
+  $('obra-ficha').querySelectorAll('[data-app]').forEach(el => el.onchange = () => {
+    const a = w.apps[el.dataset.app];
+    if (el.checked) { a.presente = true; a.activa = true; ed.tabApp = el.dataset.app; }
+    else { a.activa = false; if (!o.apps[el.dataset.app].presente) a.presente = false; }
+    renderFichaObra();
+  });
+  $('obra-ficha').querySelectorAll('[data-tab]').forEach(el => el.onclick = () => { ed.tabApp = el.dataset.tab; renderFichaObra(); });
+  $('obra-descartar').onclick = async () => {
+    if (!cambiosObra().length) return;
+    if (await confirmar('Descartar cambios', [], { intro: '¿Volver a los datos guardados?', textoOk: 'Descartar', peligro: true })) {
+      if (ed.nueva) { st.obraEd = null; st.obraSel = null; vaciarFicha('obra-ficha', 'Elegí una obra de la lista.'); renderListaObras(); }
+      else abrirObra(o.datos.id);
+    }
+  };
+  $('obra-guardar').onclick = guardarObra;
+  if (ed.tabApp) renderMiembros();
+  actualizarBarraObra();
+}
+
+function renderMiembros() {
+  const ed = st.obraEd, app = ed.tabApp, lista = ed.w.miembros[app], orig = ed.orig.miembros[app];
+  const perfiles = perfilesDe(app);
+  const filas = lista.map((m, i) => {
+    const o = orig.find(x => x.persona_id === m.persona_id);
+    const cls = !o ? 'nuevo' : (o.perfil !== m.perfil ? 'cambiado' : '');
+    const entra = D.appUsuarios.find(u => u.persona_id === m.persona_id && u.app === app && u.activo);
+    const p = persona(m.persona_id);
+    return `<tr class="${cls}">
+      <td><b>${esc(nombreP(m.persona_id))}</b><div class="nota" style="margin:0">${esc(mailPpal(m.persona_id))}</div></td>
+      <td>${p && !p.activa ? '<span class="chip err">persona inactiva</span> ' : ''}${!entra ? `<span class="chip warn">${cls === 'nuevo' ? 'se habilita en ' + APP_CORTO[app] : 'no entra a ' + APP_CORTO[app]}</span>` : ''}</td>
+      <td style="width:200px"><select class="inp" data-i="${i}">${perfiles.map(pf => `<option value="${pf.perfil}" ${pf.perfil === m.perfil ? 'selected' : ''}>${pf.perfil}</option>`).join('')}</select></td>
+      <td class="acciones"><button class="btn-icono peligro" type="button" data-quitar="${i}" title="Quitar acceso">Quitar</button></td></tr>`;
+  });
+  const quitados = orig.filter(o => !lista.find(m => m.persona_id === o.persona_id)).map(o => `<tr class="quitado">
+      <td><b>${esc(nombreP(o.persona_id))}</b></td><td></td><td>${esc(o.perfil)}</td>
+      <td class="acciones"><button class="btn-icono" type="button" data-volver="${o.persona_id}">Deshacer</button></td></tr>`);
+  const ag = adminGlobal();
+  const candidatas = D.personas.filter(p => p.activa && !(ag && p.id === ag.id) && !lista.find(m => m.persona_id === p.id));
+  $('obra-miembros').innerHTML = `
+    ${filas.length || quitados.length ? `<table class="tabla"><thead><tr><th>Persona</th><th></th><th>Perfil</th><th></th></tr></thead>
+      <tbody>${filas.join('')}${quitados.join('')}</tbody></table>` : `<div class="nota">Nadie tiene acceso a esta obra en ${APP_CORTO[app]} todavía.</div>`}
+    <div class="agregar-fila">
+      <select class="inp" id="miembro-persona"><option value="">+ Agregar persona…</option>${candidatas.map(p => `<option value="${p.id}">${esc(p.nombre_apellido)} · ${esc(mailPpal(p.id))}</option>`).join('')}</select>
+      <select class="inp" id="miembro-perfil" style="max-width:160px">${perfiles.map(pf => `<option value="${pf.perfil}">${pf.perfil}</option>`).join('')}</select>
+      <button class="btn sec" id="miembro-agregar" type="button">Agregar</button>
+    </div>
+    <div class="nota">Perfiles: ${perfiles.map(pf => `<b>${pf.perfil}</b> ${esc(pf.descripcion || '')}`).join(' · ')}</div>`;
+  $('obra-miembros').querySelectorAll('[data-i]').forEach(el => el.onchange = () => { lista[+el.dataset.i].perfil = el.value; renderMiembros(); actualizarBarraObra(); });
+  $('obra-miembros').querySelectorAll('[data-quitar]').forEach(el => el.onclick = () => { lista.splice(+el.dataset.quitar, 1); renderFichaObra(); });
+  $('obra-miembros').querySelectorAll('[data-volver]').forEach(el => el.onclick = () => {
+    const o = orig.find(x => x.persona_id === el.dataset.volver); lista.push({ ...o }); renderFichaObra();
+  });
+  $('miembro-agregar').onclick = () => {
+    const pid = $('miembro-persona').value;
+    if (!pid) { toast('Elegí una persona.'); return; }
+    lista.push({ persona_id: pid, perfil: $('miembro-perfil').value });
+    renderFichaObra();
+  };
+}
+
+function cambiosObra() {
+  const ed = st.obraEd; if (!ed) return [];
+  const w = ed.w, o = ed.orig, out = [];
+  CAMPOS_OBRA.forEach(c => {
+    const a = norm(o.datos[c.k]), b = norm(w.datos[c.k]);
+    if (a !== b) out.push({
+      tipo: 'cambio', clave: 'dato', campo: c.k,
+      html: `<b>${c.t}:</b> ${esc(c.tipo === 'date' ? fmtFecha(a) : c.k === 'estado' ? ESTADOS[a] : (a ?? '—'))} → ${esc(c.tipo === 'date' ? fmtFecha(b) : c.k === 'estado' ? ESTADOS[b] : (b ?? '—'))}`,
+      aviso: c.k === 'codigo' && !ed.nueva ? 'El código nuevo se ve en todas las apps.' : '',
+    });
+  });
+  APPS_OBRA.forEach(app => {
+    const a = o.apps[app], b = w.apps[app];
+    const antes = a.presente && a.activa, despues = b.presente && b.activa;
+    if (antes !== despues) out.push(despues
+      ? { tipo: 'mas', clave: 'app', app, html: `<b>${APP_CORTO[app]}:</b> ${a.presente ? 'se vuelve a activar' : 'se agrega la obra'}` }
+      : { tipo: 'menos', clave: 'app', app, html: `<b>${APP_CORTO[app]}:</b> queda inactiva`, aviso: 'No se borra nada: los accesos se conservan y se puede volver a activar.' });
+  });
+  APPS_OBRA.forEach(app => {
+    const antes = o.miembros[app], ahora = w.miembros[app];
+    ahora.forEach(m => {
+      const v = antes.find(x => x.persona_id === m.persona_id);
+      const entra = D.appUsuarios.find(u => u.persona_id === m.persona_id && u.app === app && u.activo);
+      if (!v) out.push({ tipo: 'mas', clave: 'acc', app, html: `<b>${APP_CORTO[app]} · ${esc(nombreP(m.persona_id))}:</b> nuevo acceso como <b>${m.perfil}</b>`, aviso: entra ? '' : `También se habilita su entrada a ${APP_CORTO[app]}.` });
+      else if (v.perfil !== m.perfil) out.push({ tipo: 'cambio', clave: 'acc', app, html: `<b>${APP_CORTO[app]} · ${esc(nombreP(m.persona_id))}:</b> ${v.perfil} → <b>${m.perfil}</b>` });
+    });
+    antes.forEach(v => { if (!ahora.find(m => m.persona_id === v.persona_id)) out.push({ tipo: 'menos', clave: 'acc', app, html: `<b>${APP_CORTO[app]} · ${esc(nombreP(v.persona_id))}:</b> se quita el acceso (${v.perfil})` }); });
+  });
+  return out;
+}
+function actualizarBarraObra() {
+  const n = cambiosObra().length, el = $('obra-estado'); if (!el) return;
+  el.textContent = n ? `${n} cambio${n > 1 ? 's' : ''} sin guardar` : (st.obraEd.nueva ? 'Obra nueva' : 'Sin cambios');
+  el.className = 'estado' + (n ? ' sucio' : '');
+  $('obra-guardar').disabled = !n; $('obra-descartar').disabled = !n && !st.obraEd.nueva;
+}
+function validarObra() {
+  const w = st.obraEd.w, d = w.datos;
+  if (vacio(d.codigo)) return 'Falta el código.';
+  if (vacio(d.nombre_corto)) return 'Falta el nombre corto.';
+  const dup = D.obras.find(o => o.codigo.toLowerCase() === d.codigo.trim().toLowerCase() && o.id !== d.id);
+  if (dup) return `Ya existe la obra ${etiqObra(dup)} con ese código.`;
+  if (d.inicio_previsto && d.fin_previsto && d.fin_previsto < d.inicio_previsto) return 'El fin previsto es anterior al inicio previsto.';
+  if (d.inicio_real && d.fin_real && d.fin_real < d.inicio_real) return 'El fin real es anterior al inicio real.';
+  return '';
+}
+async function guardarObra() {
+  const ed = st.obraEd, cambios = cambiosObra();
+  if (!cambios.length) return;
+  const err = validarObra(); if (err) { avisar('No se puede guardar', esc(err)); return; }
+  const ok = await confirmar(ed.nueva ? 'Crear obra' : 'Guardar cambios de la obra', cambios, { textoOk: ed.nueva ? 'Crear obra' : 'Guardar' });
+  if (!ok) return;
+  const btn = $('obra-guardar'); btn.disabled = true; btn.textContent = 'Guardando…';
+  const w = ed.w, o = ed.orig, id = w.datos.id;
+  try {
+    // 1. datos
+    const fila = {}; CAMPOS_OBRA.forEach(c => fila[c.k] = norm(w.datos[c.k]));
+    if (ed.nueva) await q(sb.from('goe_obras').insert({ id, ...fila }));
+    else {
+      const parcial = {}; CAMPOS_OBRA.forEach(c => { if (norm(o.datos[c.k]) !== fila[c.k]) parcial[c.k] = fila[c.k]; });
+      if (Object.keys(parcial).length) await q(sb.from('goe_obras').update(parcial).eq('id', id));
+    }
+    // 2. apps
+    const filasApps = APPS_OBRA.filter(app => w.apps[app].presente &&
+      (!o.apps[app].presente || o.apps[app].activa !== w.apps[app].activa))
+      .map(app => ({ obra_id: id, app, activa: w.apps[app].activa }));
+    if (filasApps.length) await q(sb.from('goe_obra_apps').upsert(filasApps, { onConflict: 'obra_id,app' }));
+    // 3. accesos (quitar, agregar/cambiar) + habilitar entrada a la app si hace falta
+    for (const app of APPS_OBRA) {
+      const antes = o.miembros[app], ahora = w.miembros[app];
+      const quitar = antes.filter(v => !ahora.find(m => m.persona_id === v.persona_id)).map(v => v.persona_id);
+      if (quitar.length) await q(sb.from('goe_accesos').delete().eq('obra_id', id).eq('app', app).in('persona_id', quitar));
+      const poner = ahora.filter(m => { const v = antes.find(x => x.persona_id === m.persona_id); return !v || v.perfil !== m.perfil; });
+      if (poner.length) {
+        const habilitar = poner.filter(m => !D.appUsuarios.find(u => u.persona_id === m.persona_id && u.app === app && u.activo));
+        for (const m of habilitar) {
+          const existe = D.appUsuarios.find(u => u.persona_id === m.persona_id && u.app === app);
+          if (existe) await q(sb.from('goe_app_usuarios').update({ activo: true }).eq('persona_id', m.persona_id).eq('app', app));
+          else await q(sb.from('goe_app_usuarios').insert({ persona_id: m.persona_id, app, activo: true }));
+        }
+        await q(sb.from('goe_accesos').upsert(poner.map(m => ({ persona_id: m.persona_id, obra_id: id, app, perfil: m.perfil })), { onConflict: 'persona_id,obra_id,app' }));
+      }
+    }
+    await cargarDatos();
+    st.obraEd = null;
+    abrirObra(id);
+    toast(ed.nueva ? 'Obra creada' : 'Cambios guardados');
+  } catch (e) {
+    console.error('[guardarObra]', e);
+    btn.disabled = false; btn.textContent = 'Guardar cambios';
+    await avisar('No se pudo guardar', esc(textoError(e)) + '<div class="nota">Si una parte llegó a guardarse, la ficha se recarga con lo que quedó en la base.</div>');
+    try { await cargarDatos(); if (obra(id)) { st.obraEd = null; abrirObra(id); } } catch (e2) { console.error(e2); }
+  }
+}
+
+/* ════════════════════════════════════════════════════════
+   PERSONAS — lista
+════════════════════════════════════════════════════════ */
+function appsDePersona(id) { return D.appUsuarios.filter(u => u.persona_id === id && u.activo).map(u => u.app).sort((a, b) => APPS_OBRA.indexOf(a) - APPS_OBRA.indexOf(b)); }
+function renderListaPersonas() {
+  const txt = sinAcentos($('personas-buscar').value), inact = $('personas-ver-inactivas').checked;
+  const lista = D.personas.filter(p => (inact || p.activa) &&
+    (!txt || sinAcentos(p.nombre_apellido + ' ' + D.mails.filter(m => m.persona_id === p.id).map(m => m.email).join(' ')).includes(txt)));
+  const nueva = st.personaEd && st.personaEd.nueva ? `<div class="item sel"><div class="item-tit">Persona nueva</div><div class="item-sub">sin guardar</div></div>` : '';
+  $('personas-lista').innerHTML = nueva + (lista.length ? lista.map(p => `
+    <div class="item ${p.id === st.personaSel && !(st.personaEd && st.personaEd.nueva) ? 'sel' : ''}" data-id="${p.id}">
+      <div class="item-tit">${esc(p.nombre_apellido)} ${p.es_admin_global ? '<span class="chip admin">ADMIN GLOBAL</span>' : ''} ${p.activa ? '' : '<span class="chip err">inactiva</span>'}</div>
+      <div class="item-sub">${esc(mailPpal(p.id))}</div>
+      <div class="item-sub">${p.es_admin_global ? '<span class="chip app">todas las apps</span>' : (appsDePersona(p.id).map(a => `<span class="chip app">${APP_CORTO[a]}</span>`).join('') || '<span class="chip">sin apps</span>')}</div>
+    </div>`).join('') : '<div class="lista-vacia">No hay personas con ese filtro.</div>');
+  $('personas-lista').querySelectorAll('.item[data-id]').forEach(el => el.onclick = () => seleccionarPersona(el.dataset.id));
+}
+async function seleccionarPersona(id) {
+  if (st.personaEd && !st.personaEd.nueva && st.personaEd.orig.datos.id === id) return;
+  if (!(await puedoSalir())) return;
+  abrirPersona(id);
+}
+
+/* ════════════════════════════════════════════════════════
+   PERSONAS — ficha
+════════════════════════════════════════════════════════ */
+function modeloPersona(p) {
+  const m = {
+    datos: { id: p ? p.id : uuid(), nombre_apellido: p ? p.nombre_apellido : '', activa: p ? p.activa : true,
+             telegram_chat_id: p ? (p.telegram_chat_id || '') : '', observaciones: p ? (p.observaciones || '') : '' },
+    mails: p ? D.mails.filter(x => x.persona_id === p.id).map(x => ({ email: x.email, principal: x.principal })) : [],
+    apps: {},
+  };
+  APPS_OBRA.forEach(app => {
+    const u = p && D.appUsuarios.find(x => x.persona_id === p.id && x.app === app);
+    m.apps[app] = { existe: !!u, entra: u ? u.activo : false, probador: u ? u.probador_mantenimiento : false };
+  });
+  return m;
+}
+function abrirPersona(id) {
+  const p = id ? persona(id) : null;
+  if (id && !p) { st.personaSel = null; vaciarFicha('persona-ficha', 'La persona ya no está.'); return; }
+  const orig = modeloPersona(p);
+  st.personaSel = id; st.personaEd = { nueva: !id, orig, w: clonar(orig), esAdmin: !!(p && p.es_admin_global) };
+  renderFichaPersona(); renderListaPersonas();
+}
+async function nuevaPersona() {
+  if (!(await puedoSalir())) return;
+  abrirPersona(null);
+  const inp = document.querySelector('#persona-ficha [data-k="nombre_apellido"]'); if (inp) inp.focus();
+}
+function renderFichaPersona() {
+  const ed = st.personaEd, w = ed.w, o = ed.orig;
+  const cmb = k => String(w.datos[k] ?? '') !== String(o.datos[k] ?? '') ? 'cambiado' : '';
+  const mails = w.mails.map((m, i) => {
+    const era = o.mails.find(x => x.email === m.email);
+    const cls = !era ? 'nuevo' : (era.principal !== m.principal ? 'cambiado' : '');
+    const esSesion = m.email === st.email;
+    return `<tr class="${cls}"><td>${esc(m.email)} ${esSesion ? '<span class="chip">tu sesión</span>' : ''}</td>
+      <td style="width:120px"><label class="check"><input type="radio" name="mail-ppal" data-ppal="${i}" ${m.principal ? 'checked' : ''}> principal</label></td>
+      <td class="acciones"><button class="btn-icono peligro" type="button" data-quitar-mail="${i}" ${esSesion ? 'disabled title="Es el mail con el que entraste"' : ''}>Quitar</button></td></tr>`;
+  }).concat(o.mails.filter(x => !w.mails.find(m => m.email === x.email)).map(x => `<tr class="quitado"><td>${esc(x.email)}</td><td></td>
+      <td class="acciones"><button class="btn-icono" type="button" data-volver-mail="${esc(x.email)}">Deshacer</button></td></tr>`)).join('');
+  const apps = APPS_OBRA.map(app => {
+    const a = w.apps[app], b = o.apps[app];
+    return `<tr class="${a.entra !== b.entra || a.probador !== b.probador ? 'cambiado' : ''}"><td><b>${APP_CORTO[app]}</b></td>
+      <td><label class="check"><input type="checkbox" data-entra="${app}" ${a.entra || ed.esAdmin ? 'checked' : ''} ${ed.esAdmin ? 'disabled' : ''}> entra</label></td>
+      <td><label class="check"><input type="checkbox" data-prob="${app}" ${a.probador ? 'checked' : ''}> probador de mantenimiento</label></td></tr>`;
+  }).join('');
+  const accesos = ed.nueva ? [] : D.accesos.filter(a => a.persona_id === o.datos.id)
+    .map(a => ({ ...a, ob: obra(a.obra_id) })).sort((a, b) => (a.ob?.codigo || '').localeCompare(b.ob?.codigo || '') || APPS_OBRA.indexOf(a.app) - APPS_OBRA.indexOf(b.app));
+  const filasAcc = accesos.map(a => {
+    const oa = D.obraApps.find(x => x.obra_id === a.obra_id && x.app === a.app);
+    const entra = D.appUsuarios.find(u => u.persona_id === a.persona_id && u.app === a.app && u.activo);
+    return `<tr><td><a href="#" data-ir-obra="${a.obra_id}" style="color:var(--accent);font-weight:600">${esc(etiqObra(a.ob))}</a></td><td>${APP_CORTO[a.app]}</td><td><b>${esc(a.perfil)}</b></td>
+      <td>${oa && !oa.activa ? '<span class="chip">obra inactiva en la app</span>' : ''} ${!entra ? `<span class="chip warn">no entra a ${APP_CORTO[a.app]}</span>` : ''}</td></tr>`;
+  }).join('');
+
+  $('persona-ficha').innerHTML = `
+    <div class="ficha-scroll">
+      <div class="ficha-tit">${ed.nueva ? 'Persona nueva' : esc(o.datos.nombre_apellido)} ${ed.esAdmin ? '<span class="chip admin">ADMIN GLOBAL</span>' : ''}</div>
+      <div class="ficha-sub">${ed.nueva ? 'Completá el nombre y al menos un mail. El usuario de acceso se crea solo la primera vez que pida el código.' : esc(mailPpal(o.datos.id))}</div>
+      <div class="card"><h3>Datos</h3><div class="grid">
+        <div class="campo c2"><label>Nombre y apellido <span class="req">*</span></label><input class="inp ${cmb('nombre_apellido')}" data-k="nombre_apellido" value="${esc(w.datos.nombre_apellido)}"></div>
+        <div class="campo"><label>Chat_id de Telegram</label><input class="inp ${cmb('telegram_chat_id')}" data-k="telegram_chat_id" value="${esc(w.datos.telegram_chat_id)}" placeholder="ej. 123456789"></div>
+        <div class="campo"><label>Estado</label><label class="check" style="margin-top:6px"><input type="checkbox" data-k="activa" ${w.datos.activa ? 'checked' : ''} ${ed.esAdmin ? 'disabled title="El admin global no se puede desactivar"' : ''}> activa</label></div>
+        <div class="campo c4"><label>Observaciones</label><textarea class="inp ${cmb('observaciones')}" data-k="observaciones" rows="2">${esc(w.datos.observaciones)}</textarea></div>
+      </div>${!w.datos.activa ? '<div class="nota" style="color:var(--err-fg)">Inactiva: pierde el acceso a todas las apps de una vez (sus accesos se conservan).</div>' : ''}</div>
+      <div class="card"><h3>Mails</h3>
+        ${w.mails.length || o.mails.length ? `<table class="tabla"><tbody>${mails}</tbody></table>` : '<div class="nota">Sin mails todavía.</div>'}
+        <div class="agregar-fila"><input class="inp" id="mail-nuevo" type="email" placeholder="nuevo@mail.com"><button class="btn sec" id="mail-agregar" type="button">+ Agregar mail</button></div>
+        <div class="nota">Con cualquiera de sus mails entra como la misma persona. El principal es el que se muestra.</div>
+      </div>
+      <div class="card"><h3>Apps</h3><table class="tabla"><tbody>${apps}</tbody></table>
+        ${ed.esAdmin ? '<div class="nota">El admin global entra a todas las apps.</div>' : ''}</div>
+      <div class="card"><h3>Accesos <span class="h3-extra nota" style="margin-top:0">Solo lectura · se editan en la ficha de cada obra</span></h3>
+        ${ed.esAdmin ? '<div class="nota">Administra todas las obras de todas las apps.</div>' : (filasAcc ? `<table class="tabla"><thead><tr><th>Obra</th><th>App</th><th>Perfil</th><th></th></tr></thead><tbody>${filasAcc}</tbody></table>` : '<div class="nota">Sin accesos a obras.</div>')}
+      </div>
+    </div>
+    <div class="barra-guardar">
+      <span class="estado" id="persona-estado"></span>
+      <button class="btn sec" id="persona-descartar" type="button">Descartar</button>
+      <button class="btn" id="persona-guardar" type="button">Guardar cambios</button>
+    </div>`;
+
+  $('persona-ficha').querySelectorAll('[data-k]').forEach(el => el.oninput = el.onchange = () => {
+    const k = el.dataset.k;
+    w.datos[k] = el.type === 'checkbox' ? el.checked : el.value;
+    if (el.type === 'checkbox') renderFichaPersona();
+    else { el.classList.toggle('cambiado', String(w.datos[k] ?? '') !== String(o.datos[k] ?? '')); actualizarBarraPersona(); }
+  });
+  $('persona-ficha').querySelectorAll('[data-ppal]').forEach(el => el.onchange = () => { w.mails.forEach((m, i) => m.principal = i === +el.dataset.ppal); renderFichaPersona(); });
+  $('persona-ficha').querySelectorAll('[data-quitar-mail]').forEach(el => el.onclick = () => {
+    const i = +el.dataset.quitarMail, eraPpal = w.mails[i].principal; w.mails.splice(i, 1);
+    if (eraPpal && w.mails.length) w.mails[0].principal = true;
+    renderFichaPersona();
+  });
+  $('persona-ficha').querySelectorAll('[data-volver-mail]').forEach(el => el.onclick = () => {
+    const x = o.mails.find(m => m.email === el.dataset.volverMail);
+    w.mails.push({ email: x.email, principal: false }); if (!w.mails.some(m => m.principal)) w.mails[0].principal = true;
+    renderFichaPersona();
+  });
+  $('mail-agregar').onclick = () => {
+    const e = $('mail-nuevo').value.trim().toLowerCase();
+    if (!emailValido(e)) { toast('Ese mail no es válido.', true); return; }
+    if (w.mails.find(m => m.email === e)) { toast('Ese mail ya está en la lista.', true); return; }
+    const otro = D.mails.find(m => m.email === e && m.persona_id !== w.datos.id);
+    if (otro) { toast(`Ese mail ya es de ${nombreP(otro.persona_id)}.`, true); return; }
+    w.mails.push({ email: e, principal: w.mails.length === 0 });
+    renderFichaPersona();
+  };
+  $('mail-nuevo').onkeydown = e => { if (e.key === 'Enter') $('mail-agregar').click(); };
+  $('persona-ficha').querySelectorAll('[data-entra]').forEach(el => el.onchange = () => { w.apps[el.dataset.entra].entra = el.checked; renderFichaPersona(); });
+  $('persona-ficha').querySelectorAll('[data-prob]').forEach(el => el.onchange = () => { w.apps[el.dataset.prob].probador = el.checked; renderFichaPersona(); });
+  $('persona-ficha').querySelectorAll('[data-ir-obra]').forEach(el => el.onclick = async e => {
+    e.preventDefault(); const id = el.dataset.irObra;
+    if (!(await puedoSalir())) return;
+    st.personaEd = null; st.obraSel = id; await irVista('obras');
+  });
+  $('persona-descartar').onclick = async () => {
+    if (!cambiosPersona().length) return;
+    if (await confirmar('Descartar cambios', [], { intro: '¿Volver a los datos guardados?', textoOk: 'Descartar', peligro: true })) {
+      if (ed.nueva) { st.personaEd = null; st.personaSel = null; vaciarFicha('persona-ficha', 'Elegí una persona de la lista.'); renderListaPersonas(); }
+      else abrirPersona(o.datos.id);
+    }
+  };
+  $('persona-guardar').onclick = guardarPersona;
+  actualizarBarraPersona();
+}
+function cambiosPersona() {
+  const ed = st.personaEd; if (!ed) return [];
+  const w = ed.w, o = ed.orig, out = [];
+  const T = { nombre_apellido: 'Nombre', telegram_chat_id: 'Chat_id de Telegram', observaciones: 'Observaciones' };
+  Object.keys(T).forEach(k => { const a = norm(o.datos[k]), b = norm(w.datos[k]); if (a !== b) out.push({ tipo: 'cambio', html: `<b>${T[k]}:</b> ${esc(a ?? '—')} → ${esc(b ?? '—')}` }); });
+  if (o.datos.activa !== w.datos.activa) out.push(w.datos.activa
+    ? { tipo: 'mas', html: '<b>Estado:</b> se activa' }
+    : { tipo: 'menos', html: '<b>Estado:</b> queda inactiva', aviso: 'Pierde el acceso a todas las apps de una vez.' });
+  w.mails.forEach(m => { if (!o.mails.find(x => x.email === m.email)) out.push({ tipo: 'mas', html: `<b>Mail:</b> se agrega ${esc(m.email)}` }); });
+  o.mails.forEach(x => { if (!w.mails.find(m => m.email === x.email)) out.push({ tipo: 'menos', html: `<b>Mail:</b> se quita ${esc(x.email)}`, aviso: 'Con ese mail ya no va a poder entrar.' }); });
+  const pa = (o.mails.find(m => m.principal) || {}).email, pb = (w.mails.find(m => m.principal) || {}).email;
+  if (pa !== pb && pb) out.push({ tipo: 'cambio', html: `<b>Mail principal:</b> ${esc(pa || '—')} → ${esc(pb)}` });
+  APPS_OBRA.forEach(app => {
+    const a = o.apps[app], b = w.apps[app];
+    if (a.entra !== b.entra) out.push(b.entra ? { tipo: 'mas', html: `<b>${APP_CORTO[app]}:</b> se habilita la entrada` } : { tipo: 'menos', html: `<b>${APP_CORTO[app]}:</b> deja de entrar`, aviso: 'Sus accesos a obras de esta app se conservan pero no los puede usar.' });
+    if (a.probador !== b.probador) out.push({ tipo: 'cambio', html: `<b>${APP_CORTO[app]}:</b> probador de mantenimiento ${b.probador ? 'sí' : 'no'}` });
+  });
+  return out;
+}
+function actualizarBarraPersona() {
+  const n = cambiosPersona().length, el = $('persona-estado'); if (!el) return;
+  el.textContent = n ? `${n} cambio${n > 1 ? 's' : ''} sin guardar` : (st.personaEd.nueva ? 'Persona nueva' : 'Sin cambios');
+  el.className = 'estado' + (n ? ' sucio' : '');
+  $('persona-guardar').disabled = !n; $('persona-descartar').disabled = !n && !st.personaEd.nueva;
+}
+async function guardarPersona() {
+  const ed = st.personaEd, cambios = cambiosPersona();
+  if (!cambios.length) return;
+  const w = ed.w, o = ed.orig, id = w.datos.id;
+  if (vacio(w.datos.nombre_apellido)) { avisar('No se puede guardar', 'Falta el nombre y apellido.'); return; }
+  if (!w.mails.length) { avisar('No se puede guardar', 'La persona necesita al menos un mail para entrar.'); return; }
+  const ok = await confirmar(ed.nueva ? 'Crear persona' : 'Guardar cambios de la persona', cambios, { textoOk: ed.nueva ? 'Crear persona' : 'Guardar' });
+  if (!ok) return;
+  const btn = $('persona-guardar'); btn.disabled = true; btn.textContent = 'Guardando…';
+  try {
+    const datos = { nombre_apellido: w.datos.nombre_apellido.trim(), activa: !!w.datos.activa,
+                    telegram_chat_id: norm(w.datos.telegram_chat_id), observaciones: norm(w.datos.observaciones) };
+    if (ed.nueva) await q(sb.from('goe_personas').insert({ id, ...datos }));
+    else await q(sb.from('goe_personas').update(datos).eq('id', id));
+    // mails: quitar, agregar, y principal (primero se apaga el anterior: la base admite uno solo)
+    const quitar = o.mails.filter(x => !w.mails.find(m => m.email === x.email)).map(x => x.email);
+    if (quitar.length) await q(sb.from('goe_persona_mails').delete().in('email', quitar).eq('persona_id', id));
+    const agregar = w.mails.filter(m => !o.mails.find(x => x.email === m.email));
+    if (agregar.length) await q(sb.from('goe_persona_mails').insert(agregar.map(m => ({ email: m.email, persona_id: id, principal: false }))));
+    const ppal = (w.mails.find(m => m.principal) || w.mails[0]).email;
+    const ppalAntes = (o.mails.find(m => m.principal) || {}).email;
+    if (ppal !== ppalAntes) {
+      await q(sb.from('goe_persona_mails').update({ principal: false }).eq('persona_id', id).neq('email', ppal));
+      await q(sb.from('goe_persona_mails').update({ principal: true }).eq('email', ppal));
+    }
+    // apps
+    const filas = APPS_OBRA.filter(app => { const a = o.apps[app], b = w.apps[app]; return a.entra !== b.entra || a.probador !== b.probador; })
+      .map(app => ({ persona_id: id, app, activo: w.apps[app].entra, probador_mantenimiento: w.apps[app].probador }));
+    if (filas.length) await q(sb.from('goe_app_usuarios').upsert(filas, { onConflict: 'persona_id,app' }));
+    await cargarDatos();
+    st.personaEd = null; abrirPersona(id);
+    toast(ed.nueva ? 'Persona creada' : 'Cambios guardados');
+  } catch (e) {
+    console.error('[guardarPersona]', e);
+    btn.disabled = false; btn.textContent = 'Guardar cambios';
+    await avisar('No se pudo guardar', esc(textoError(e)) + '<div class="nota">Si una parte llegó a guardarse, la ficha se recarga con lo que quedó en la base.</div>');
+    try { await cargarDatos(); if (persona(id)) { st.personaEd = null; abrirPersona(id); } } catch (e2) { console.error(e2); }
+  }
+}
+
+/* ════════════════════════════════════════════════════════
+   MdT — usuarios y listas
+════════════════════════════════════════════════════════ */
+const MDT = {
+  usuarios:     { t: 'Usuarios',     tabla: 'mdt_usuarios',     clave: 'email', orden: null,  borrar: false, alta: true,
+                  cols: [{ k: 'email', t: 'Mail', req: true, fija: true }, { k: 'nombre', t: 'Nombre' }, { k: 'activo', t: 'Activo', tipo: 'bool' }] },
+  etiquetas:    { t: 'Etiquetas',    tabla: 'mdt_etiquetas',    clave: 'id', orden: 'orden', borrar: true, alta: true,
+                  cols: [{ k: 'nombre', t: 'Nombre', req: true }] },
+  marcas:       { t: 'Marcas',       tabla: 'mdt_marcas',       clave: 'id', orden: 'orden', borrar: true, alta: true,
+                  cols: [{ k: 'nombre', t: 'Nombre', req: true }, { k: 'color', t: 'Color', tipo: 'color' }] },
+  tareas:       { t: 'Tareas',       tabla: 'mdt_tareas',       clave: 'id', orden: 'orden', borrar: true, alta: true,
+                  cols: [{ k: 'tarea', t: 'Tarea', req: true }, { k: 'etiqueta', t: 'Etiqueta', tipo: 'etiqueta' }] },
+  herramientas: { t: 'Herramientas', tabla: 'mdt_herramientas', clave: 'id', orden: 'orden', borrar: true, alta: true,
+                  cols: [{ k: 'emoji', t: 'Emoji' }, { k: 'nombre', t: 'Nombre', req: true }, { k: 'url', t: 'Link', req: true, tipo: 'url' }] },
+  config:       { t: 'Config',       tabla: 'mdt_config',       clave: 'clave', orden: null, borrar: false, alta: false,
+                  cols: [{ k: 'clave', t: 'Clave', fija: true }, { k: 'valor', t: 'Valor' }] },
+};
+const AVISO_CONFIG = { calendar_id: 'Es el calendario donde el sync diario escribe las notas. Cambiarlo hace que los eventos nuevos vayan a otro calendario.' };
+
+function swatch(color, texto) {
+  const c = MARCA_COLORS[color] || MARCA_COLORS.gray;
+  return `<span class="swatch" style="background:${c.bg};color:${c.fg};border-color:${c.border}">${esc(texto || color)}</span>`;
+}
+async function cargarMdt(tab) {
+  const cfg = MDT[tab];
+  let consulta = sb.from(cfg.tabla).select('*');
+  consulta = cfg.orden ? consulta.order(cfg.orden).order('id') : consulta.order(cfg.clave);
+  st.mdt[tab] = await q(consulta);
+  if (tab === 'tareas' && !st.mdt.etiquetas) st.mdt.etiquetas = await q(sb.from('mdt_etiquetas').select('*').order('orden').order('id'));
+}
+async function renderMdt() {
+  $('mdt-tabs').innerHTML = Object.entries(MDT).map(([k, c]) => `<button type="button" data-mdt="${k}" class="${k === st.mdtTab ? 'activa' : ''}">${c.t}${st.mdt[k] ? `<span class="cnt">${st.mdt[k].length}</span>` : ''}</button>`).join('');
+  $('mdt-tabs').querySelectorAll('[data-mdt]').forEach(b => b.onclick = async () => {
+    if (b.dataset.mdt === st.mdtTab) return;
+    if (!(await puedoSalir())) return;
+    st.mdtOrden = null; st.mdtTab = b.dataset.mdt; renderMdt();
+  });
+  const tab = st.mdtTab, cfg = MDT[tab];
+  if (!st.mdt[tab]) {
+    $('mdt-contenido').innerHTML = '<div class="cargando" style="margin:20px 0"><div class="spinner"></div>Cargando…</div>';
+    try { await cargarMdt(tab); } catch (e) { console.error('[cargarMdt]', e); $('mdt-contenido').innerHTML = `<div class="nota" style="color:var(--err-fg)">No se pudo cargar: ${esc(textoError(e))}</div>`; return; }
+    return renderMdt();
+  }
+  const filas = st.mdtOrden || st.mdt[tab];
+  const celda = (c, f) => {
+    const v = f[c.k];
+    if (c.tipo === 'bool') return v ? '<span class="chip ok">sí</span>' : '<span class="chip err">no</span>';
+    if (c.tipo === 'color') return swatch(v);
+    if (c.tipo === 'url') return `<a href="${esc(v)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(v)}</a>`;
+    if (tab === 'marcas' && c.k === 'nombre') return swatch(f.color, v);
+    return esc(v === '' || v == null ? '—' : v);
+  };
+  $('mdt-contenido').innerHTML = `
+    ${st.mdtOrden ? `<div class="barra-orden"><span>Cambiaste el orden. No se guardó todavía.</span>
+      <button class="btn sec chico" id="orden-descartar" type="button">Descartar</button><button class="btn chico" id="orden-guardar" type="button">Guardar orden</button></div>` : ''}
+    ${filas.length ? `<table class="tabla"><thead><tr>${cfg.orden ? '<th></th>' : ''}${cfg.cols.map(c => `<th>${c.t}</th>`).join('')}<th></th></tr></thead>
+      <tbody id="mdt-tbody">${filas.map((f, i) => `<tr data-i="${i}" ${cfg.orden ? 'draggable="true"' : ''}>
+        ${cfg.orden ? '<td class="asa" title="Arrastrá para cambiar el orden">⋮⋮</td>' : ''}
+        ${cfg.cols.map(c => `<td>${celda(c, f)}</td>`).join('')}
+        <td class="acciones"><button class="btn-icono" type="button" data-editar="${i}">Editar</button>
+          ${cfg.borrar ? `<button class="btn-icono peligro" type="button" data-borrar="${i}">Borrar</button>` : ''}</td></tr>`).join('')}</tbody></table>`
+      : `<div class="nota">Sin ítems todavía.</div>`}
+    ${cfg.alta ? `<div class="agregar-fila"><button class="btn sec" id="mdt-agregar" type="button">+ Agregar</button></div>` : ''}
+    ${tab === 'usuarios' ? '<div class="nota">Quién puede entrar a MdT. No se borran: se desactivan.</div>' : ''}
+    ${tab === 'etiquetas' || tab === 'marcas' ? '<div class="nota">Las notas ya cargadas guardan el texto de la etiqueta o marca: borrar o renombrar acá no cambia las notas viejas.</div>' : ''}
+    ${tab === 'config' ? '<div class="nota">Las claves las usa MdT por nombre: acá solo se cambia el valor.</div>' : ''}`;
+
+  if (st.mdtOrden) {
+    $('orden-descartar').onclick = () => { st.mdtOrden = null; renderMdt(); };
+    $('orden-guardar').onclick = guardarOrdenMdt;
+  }
+  $('mdt-contenido').querySelectorAll('[data-editar]').forEach(b => b.onclick = () => {
+    if (st.mdtOrden) { toast('Primero guardá o descartá el cambio de orden.'); return; }
+    editarItemMdt(st.mdt[tab][+b.dataset.editar]);
+  });
+  $('mdt-contenido').querySelectorAll('[data-borrar]').forEach(b => b.onclick = () => {
+    if (st.mdtOrden) { toast('Primero guardá o descartá el cambio de orden.'); return; }
+    borrarItemMdt(st.mdt[tab][+b.dataset.borrar]);
+  });
+  if (cfg.alta) $('mdt-agregar').onclick = () => {
+    if (st.mdtOrden) { toast('Primero guardá o descartá el cambio de orden.'); return; }
+    editarItemMdt(null);
+  };
+  if (cfg.orden) activarArrastre();
+}
+function activarArrastre() {
+  const tbody = $('mdt-tbody'); if (!tbody) return;
+  let desde = null;
+  tbody.querySelectorAll('tr').forEach(tr => {
+    tr.ondragstart = e => { desde = +tr.dataset.i; tr.classList.add('arrastrando'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(desde)); };
+    tr.ondragend = () => tr.classList.remove('arrastrando');
+    tr.ondragover = e => { e.preventDefault(); tbody.querySelectorAll('tr.sobre').forEach(x => x.classList.remove('sobre')); tr.classList.add('sobre'); };
+    tr.ondragleave = () => tr.classList.remove('sobre');
+    tr.ondrop = e => {
+      e.preventDefault(); tr.classList.remove('sobre');
+      const hasta = +tr.dataset.i; if (desde === null || desde === hasta) return;
+      const lista = (st.mdtOrden || st.mdt[st.mdtTab]).slice();
+      const [mov] = lista.splice(desde, 1); lista.splice(hasta, 0, mov);
+      const igual = lista.every((f, i) => f.id === st.mdt[st.mdtTab][i].id);
+      st.mdtOrden = igual ? null : lista;
+      renderMdt();
+    };
+  });
+}
+async function guardarOrdenMdt() {
+  const tab = st.mdtTab, cfg = MDT[tab], lista = st.mdtOrden;
+  const nombre = f => f.nombre || f.tarea || String(f.id);
+  const ok = await confirmar('Guardar orden', [{ tipo: 'cambio', html: `<b>Nuevo orden de ${cfg.t.toLowerCase()}:</b> ${lista.map(f => esc(nombre(f))).join(' · ')}` }], { textoOk: 'Guardar orden' });
+  if (!ok) return;
+  try {
+    const cambios = lista.map((f, i) => ({ id: f.id, orden: i + 1 })).filter((c, i) => lista[i].orden !== c.orden);
+    await Promise.all(cambios.map(c => q(sb.from(cfg.tabla).update({ orden: c.orden }).eq('id', c.id))));
+    st.mdtOrden = null; await cargarMdt(tab); renderMdt(); toast('Orden guardado');
+  } catch (e) { console.error('[guardarOrdenMdt]', e); avisar('No se pudo guardar el orden', esc(textoError(e))); }
+}
+function formItemMdt(cfg, f, nuevo) {
+  return `<div class="grid">${cfg.cols.map(c => {
+    const v = f ? f[c.k] : (c.tipo === 'bool' ? true : c.tipo === 'color' ? 'gray' : c.k === 'emoji' ? '🔗' : '');
+    const fija = c.fija && !nuevo;
+    let input;
+    if (c.tipo === 'bool') input = `<label class="check" style="margin-top:6px"><input type="checkbox" data-f="${c.k}" ${v ? 'checked' : ''}> ${c.t.toLowerCase()}</label>`;
+    else if (c.tipo === 'color') input = `<div class="colores">${Object.keys(MARCA_COLORS).map(col => `<label><input type="radio" name="f-color" data-f="color" value="${col}" ${v === col ? 'checked' : ''}>${swatch(col)}</label>`).join('')}</div>`;
+    else if (c.tipo === 'etiqueta') input = `<select class="inp" data-f="${c.k}"><option value="">(sin etiqueta)</option>${(st.mdt.etiquetas || []).map(e => `<option ${e.nombre === v ? 'selected' : ''}>${esc(e.nombre)}</option>`).join('')}${v && !(st.mdt.etiquetas || []).find(e => e.nombre === v) ? `<option selected>${esc(v)}</option>` : ''}</select>`;
+    else input = `<input class="inp" data-f="${c.k}" value="${esc(v)}" ${fija ? 'disabled' : ''} ${c.k === 'email' ? 'type="email"' : ''}>`;
+    const ancho = c.tipo === 'color' || c.tipo === 'url' || cfg.cols.length === 1 || c.k === 'valor' ? 'c2' : '';
+    return `<div class="campo ${ancho}"><label>${c.t}${c.req ? ' <span class="req">*</span>' : ''}</label>${input}</div>`;
+  }).join('')}</div>
+  ${cfg === MDT.config && f && AVISO_CONFIG[f.clave] ? `<div class="nota" style="color:var(--warn-fg)">⚠ ${esc(AVISO_CONFIG[f.clave])}</div>` : ''}
+  <div class="err" id="mdt-err" hidden></div>`;
+}
+function leerFormMdt(cfg) {
+  const out = {};
+  cfg.cols.forEach(c => {
+    if (c.tipo === 'color') { const r = document.querySelector('#modal-body [data-f="color"]:checked'); out.color = r ? r.value : 'gray'; return; }
+    const el = document.querySelector(`#modal-body [data-f="${c.k}"]`);
+    out[c.k] = c.tipo === 'bool' ? el.checked : el.value.trim();
+  });
+  if ('email' in out) out.email = out.email.toLowerCase();
+  return out;
+}
+function validarItemMdt(cfg, v, f) {
+  for (const c of cfg.cols) if (c.req && vacio(v[c.k])) return `Falta: ${c.t}.`;
+  if ('email' in v && !emailValido(v.email)) return 'El mail no es válido.';
+  if ('url' in v && !/^https?:\/\//i.test(v.url)) return 'El link tiene que empezar con http:// o https://';
+  const lista = st.mdt[st.mdtTab];
+  if (cfg.clave === 'email' && !f && lista.find(x => x.email === v.email)) return 'Ese mail ya es usuario de MdT.';
+  if ('nombre' in v && (st.mdtTab === 'etiquetas' || st.mdtTab === 'marcas') && lista.find(x => x.nombre.toLowerCase() === v.nombre.toLowerCase() && (!f || x.id !== f.id))) return 'Ya existe un ítem con ese nombre.';
+  return '';
+}
+async function editarItemMdt(f) {
+  const tab = st.mdtTab, cfg = MDT[tab], nuevo = !f;
+  if (tab === 'tareas' && !st.mdt.etiquetas) { try { await cargarMdt('etiquetas'); } catch (e) { console.error(e); } }
+  const titulo = (nuevo ? 'Agregar · ' : 'Editar · ') + cfg.t;
+  const vista = { cambios: null, valores: null };
+  const ok = await abrirModal({
+    titulo, html: formItemMdt(cfg, f, nuevo),
+    botones: [{ texto: 'Cancelar', clase: 'sec', valor: false }, {
+      texto: 'Guardar', valor: true, antes: async () => {
+        const v = leerFormMdt(cfg), err = validarItemMdt(cfg, v, f);
+        if (err) { $('mdt-err').hidden = false; $('mdt-err').textContent = err; return false; }
+        const cambios = [];
+        cfg.cols.forEach(c => {
+          if (c.fija && !nuevo) return;
+          const a = f ? f[c.k] : undefined, b = v[c.k];
+          const txt = x => c.tipo === 'bool' ? (x ? 'sí' : 'no') : (x === '' || x == null ? '—' : x);
+          if (nuevo) { if (!vacio(b) || c.tipo === 'bool') cambios.push({ tipo: 'mas', html: `<b>${c.t}:</b> ${c.tipo === 'color' ? swatch(b) : esc(txt(b))}` }); }
+          else if (String(a ?? '') !== String(b ?? '')) cambios.push({
+            tipo: 'cambio', html: `<b>${c.t}:</b> ${c.tipo === 'color' ? swatch(a) : esc(txt(a))} → ${c.tipo === 'color' ? swatch(b) : esc(txt(b))}`,
+            aviso: tab === 'etiquetas' && c.k === 'nombre' ? 'Las notas y tareas que ya usan el nombre anterior no se cambian.' :
+                   tab === 'config' && AVISO_CONFIG[f.clave] ? AVISO_CONFIG[f.clave] :
+                   tab === 'usuarios' && c.k === 'activo' && !b ? 'Deja de poder entrar a MdT.' : '',
+          });
+        });
+        if (!cambios.length) { $('mdt-err').hidden = false; $('mdt-err').textContent = 'No hay cambios para guardar.'; return false; }
+        vista.cambios = cambios; vista.valores = v;
+        return true;
+      },
+    }],
+  });
+  if (!ok) return;
+  const conf = await confirmar(nuevo ? `Agregar a ${cfg.t.toLowerCase()}` : `Guardar cambios en ${cfg.t.toLowerCase()}`, vista.cambios, { textoOk: nuevo ? 'Agregar' : 'Guardar' });
+  if (!conf) return;
+  try {
+    const v = vista.valores;
+    if (nuevo) {
+      if (cfg.orden) v.orden = (st.mdt[tab].reduce((m, x) => Math.max(m, x.orden || 0), 0)) + 1;
+      await q(sb.from(cfg.tabla).insert(v));
+    } else {
+      const parcial = {}; cfg.cols.forEach(c => { if (!c.fija && String(f[c.k] ?? '') !== String(v[c.k] ?? '')) parcial[c.k] = v[c.k]; });
+      await q(sb.from(cfg.tabla).update(parcial).eq(cfg.clave, f[cfg.clave]));
+    }
+    await cargarMdt(tab); if (tab === 'etiquetas' && st.mdt.tareas) st.mdt.etiquetas = st.mdt[tab];
+    renderMdt(); toast(nuevo ? 'Agregado' : 'Cambios guardados');
+  } catch (e) { console.error('[editarItemMdt]', e); avisar('No se pudo guardar', esc(textoError(e))); }
+}
+async function borrarItemMdt(f) {
+  const tab = st.mdtTab, cfg = MDT[tab];
+  const nombre = f.nombre || f.tarea || f.clave;
+  const usada = tab === 'etiquetas' && st.mdt.tareas && st.mdt.tareas.filter(t => t.etiqueta === f.nombre).length;
+  const ok = await confirmar(`Borrar de ${cfg.t.toLowerCase()}`, [{ tipo: 'menos', html: `<b>${esc(nombre)}</b>`,
+    aviso: tab === 'etiquetas' || tab === 'marcas' ? 'Las notas ya cargadas no cambian.' + (usada ? ` ${usada} tarea(s) la usan y quedan con ese nombre.` : '') : '' }],
+    { textoOk: 'Borrar', peligro: true });
+  if (!ok) return;
+  try { await q(sb.from(cfg.tabla).delete().eq('id', f.id)); await cargarMdt(tab); renderMdt(); toast('Borrado'); }
+  catch (e) { console.error('[borrarItemMdt]', e); avisar('No se pudo borrar', esc(textoError(e))); }
+}
+
+/* ════════════════════════════════════════════════════════
+   ARRANQUE
+════════════════════════════════════════════════════════ */
+window.addEventListener('beforeunload', e => { if (st.appIniciada && haySinGuardar()) { e.preventDefault(); e.returnValue = ''; } });
+
+window.onload = async function () {
+  $('login-version').textContent = VERSION_UI + ' · Administración del stack';
+  $('login-btn-enviar').onclick = enviarCodigo;
+  $('login-email').onkeydown = e => { if (e.key === 'Enter') enviarCodigo(); };
+  $('login-btn-validar').onclick = validarCodigo;
+  $('login-codigo').onkeydown = e => { if (e.key === 'Enter') validarCodigo(); };
+  $('login-btn-volver').onclick = () => mostrarPasoLogin('email');
+  document.querySelectorAll('.hdr-nav button').forEach(b => b.onclick = () => irVista(b.dataset.vista));
+  $('hdr-avatar').onclick = async () => {
+    if (await confirmar('Cerrar sesión', [], { intro: `¿Cerrar la sesión de <b>${esc(st.email)}</b> en este dispositivo?` + (haySinGuardar() ? '<div class="nota" style="color:var(--err-fg)">Hay cambios sin guardar: se pierden.</div>' : ''), textoOk: 'Cerrar sesión' })) cerrarSesion();
+  };
+  $('obras-buscar').oninput = renderListaObras;
+  $('obras-filtro-estado').onchange = renderListaObras;
+  $('obras-nueva').onclick = nuevaObra;
+  $('personas-buscar').oninput = renderListaPersonas;
+  $('personas-ver-inactivas').onchange = renderListaPersonas;
+  $('personas-nueva').onclick = nuevaPersona;
+
+  const { data } = await sb.auth.getSession();
+  if (data.session) await entrarConSesion(data.session); else mostrarLogin();
+
+  sb.auth.onAuthStateChange(evento => {
+    if (evento === 'SIGNED_OUT' && st.appIniciada) {
+      st.appIniciada = false; mostrarLogin();
+      mostrarLoginMsg('login-msg-email', 'info', 'La sesión se cerró. Pedí un código nuevo para entrar.');
+    }
+  });
+};
+</script>
+</body>
+</html>
