@@ -5,21 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GOE Admin</title>
 <!--
-  index_admin_v1_0.html — GOE Admin v1.0 (09-oct-2026)
+  index_admin_v1_1.html — GOE Admin v1.1 (13-oct-2026)
   Repo: goeapp/admin → https://goeapp.github.io/admin/ (subir como index.html)
 
   Administración del stack sobre Supabase (proyecto PWAgoe), solo para el admin global.
   · Obras:    lista + ficha (datos, apps, miembros por app con su perfil)
   · Personas: lista + ficha (datos, mails, apps, accesos de solo lectura)
   · MdT:      usuarios y listas (etiquetas, marcas, tareas, herramientas, config)
+  · LO:       plantilla + configuración por obra (tipos, etiquetas, PdC, avisos y calendario)
   · Login por código (Supabase Auth), igual que MdT v15.0, con sesión propia (admin-sb-auth).
   · Todos los cambios se guardan con botón y un resumen para confirmar.
   · Solo computadora (sin service worker).
 
-  Requiere en Supabase: goe_esquema_v1_0.sql + goe_datos_v1_0.sql + goe_admin_v1_0.sql.
+  Requiere en Supabase: goe_esquema_v1_0.sql + goe_datos_v1_0.sql + goe_admin_v1_0.sql
+                        + lo_esquema_v8_0_0.sql (tablas lo_ y lo_plantilla).
 
   Changelog
   v1.0 — primera versión.
+  v1.1 — pestaña LO (Plantilla + obras con LO: Tipos · Etiquetas · PdC · Avisos y calendario).
+         Login con emailRedirectTo → el mail del código dice "GOE ADMIN".
 -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
@@ -254,6 +258,7 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
       <button type="button" data-vista="obras">Obras</button>
       <button type="button" data-vista="personas">Personas</button>
       <button type="button" data-vista="mdt">MdT</button>
+      <button type="button" data-vista="lo">LO</button>
     </nav>
     <span class="hdr-sep"></span>
     <span class="hdr-user" id="hdr-user"></span>
@@ -306,6 +311,17 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
       </div>
     </div>
   </section>
+
+  <!-- LO -->
+  <section class="vista" id="vista-lo">
+    <aside class="col-lista">
+      <div class="lista-top">
+        <div class="nota" style="margin:0">Plantilla para obras nuevas y la configuración de cada obra con LO tildado.</div>
+      </div>
+      <div class="lista-items" id="lo-lista"></div>
+    </aside>
+    <div class="col-ficha" id="lo-ficha"><div class="ficha-vacia">Elegí la plantilla o una obra de la lista.</div></div>
+  </section>
 </div>
 
 <!-- MODAL GENÉRICO -->
@@ -324,7 +340,8 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
 /* ════════════════════════════════════════════════════════
    CONFIGURACIÓN
 ════════════════════════════════════════════════════════ */
-const VERSION_UI     = 'v1.0';
+const VERSION_UI     = 'v1.1';
+const REDIRECT_MAIL  = 'https://goeapp.github.io/admin/';   // la plantilla del mail lo usa para poner "GOE ADMIN"
 const SUPABASE_URL   = 'https://uhuftsxrzwhmvzygcuvp.supabase.co';
 const SUPABASE_KEY   = 'sb_publishable_TCibRAnzgaDIbn_MIirw6w_FltKG8X3';
 const EMAIL_SUGERIDO = 'goecdg@gmail.com';
@@ -371,6 +388,7 @@ const st = {
   obraSel: null,    obraEd: null,      // obraEd = { nueva, orig, w, tabApp }
   personaSel: null, personaEd: null,   // personaEd = { nueva, orig, w }
   mdtTab: 'usuarios', mdt: {}, mdtOrden: null,  // mdtOrden = filas reordenadas sin guardar
+  loSel: null, loEd: null, loTabPrev: 'tipos',  // loEd = { id, orig, w, tab, pdcTipo } (id = uuid de obra o 'plantilla')
 };
 let emailPendiente = '';
 
@@ -484,7 +502,7 @@ async function enviarCodigo() {
   if (!emailValido(email)) { mostrarLoginMsg('login-msg-email', 'error', 'Ingresá un email válido.'); return; }
   $('login-btn-enviar').disabled = true;
   mostrarLoginMsg('login-msg-email', 'info', 'Enviando código…');
-  const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+  const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: REDIRECT_MAIL } });
   $('login-btn-enviar').disabled = false;
   if (error) { console.error('[signInWithOtp]', error); mostrarLoginMsg('login-msg-email', 'error', traducirErrorAuth(error)); return; }
   emailPendiente = email;
@@ -543,7 +561,7 @@ async function cargarDatos() {
    NAVEGACIÓN (con aviso de cambios sin guardar)
 ════════════════════════════════════════════════════════ */
 function haySinGuardar() {
-  return (st.obraEd && cambiosObra().length > 0) || (st.personaEd && cambiosPersona().length > 0) || !!st.mdtOrden;
+  return (st.obraEd && cambiosObra().length > 0) || (st.personaEd && cambiosPersona().length > 0) || !!st.mdtOrden || (st.loEd && cambiosLo().length > 0);
 }
 async function puedoSalir() {
   if (!haySinGuardar()) return true;
@@ -552,13 +570,14 @@ async function puedoSalir() {
 async function irVista(v) {
   if (v === st.vista && st.appIniciada) return;
   if (!(await puedoSalir())) return;
-  st.obraEd = null; st.personaEd = null; st.mdtOrden = null;
+  st.obraEd = null; st.personaEd = null; st.mdtOrden = null; st.loEd = null;
   st.vista = v;
   document.querySelectorAll('.hdr-nav button').forEach(b => b.classList.toggle('activa', b.dataset.vista === v));
   document.querySelectorAll('.vista').forEach(s => s.classList.toggle('activa', s.id === 'vista-' + v));
   if (v === 'obras') { renderListaObras(); st.obraSel ? abrirObra(st.obraSel) : vaciarFicha('obra-ficha', 'Elegí una obra de la lista.'); }
   if (v === 'personas') { renderListaPersonas(); st.personaSel ? abrirPersona(st.personaSel) : vaciarFicha('persona-ficha', 'Elegí una persona de la lista.'); }
   if (v === 'mdt') renderMdt();
+  if (v === 'lo') { renderListaLo(); abrirLo(st.loSel || PLANTILLA); }
 }
 function vaciarFicha(id, txt) { $(id).innerHTML = `<div class="ficha-vacia">${esc(txt)}</div>`; }
 
@@ -1255,6 +1274,454 @@ async function borrarItemMdt(f) {
   if (!ok) return;
   try { await q(sb.from(cfg.tabla).delete().eq('id', f.id)); await cargarMdt(tab); renderMdt(); toast('Borrado'); }
   catch (e) { console.error('[borrarItemMdt]', e); avisar('No se pudo borrar', esc(textoError(e))); }
+}
+
+/* ════════════════════════════════════════════════════════
+   v1.1 — LO (LibroObra): configuración por obra y plantilla
+   Mismo patrón que Obras/Personas: lista a la izquierda, ficha con
+   sub-pestañas, barra "N cambios sin guardar", resumen para confirmar.
+   Criterio (13-oct): se desactiva, no se renombra ni se borra lo que ya
+   usan los datos (códigos de tipo, nombres de etiqueta, IDs del PdC).
+════════════════════════════════════════════════════════ */
+const PLANTILLA = 'plantilla';
+const LO_TABS = { tipos: 'Tipos', etiquetas: 'Etiquetas', pdc: 'PdC', avisos: 'Avisos y calendario' };
+const LO_RESP = ['—', 'Cliente', 'Neutral', 'Propio'];
+const LO_IMPACTO = ['0 · sin impacto', '1 · leve', '2 · parcial', '3 · día caído'];
+const LO_DIAS = 'LMXJVSD';
+const LO_DIAS_TXT = { L: 'Lun', M: 'Mar', X: 'Mié', J: 'Jue', V: 'Vie', S: 'Sáb', D: 'Dom' };
+// Claves de lo_config que se editan acá (las demás las maneja LO Sync: solo se muestran)
+const LO_CFG = [
+  { k: 'PDC_FECHA_INICIO',      t: 'Fecha de inicio del parte', tipo: 'date', ayuda: 'Desde qué día se exige el parte. Vacía = sin faltantes todavía.' },
+  { k: 'PDC_DIAS_ATRAS',        t: 'Días hacia atrás',          tipo: 'num',  ayuda: 'Para listar partes incompletos y para el celular (1 a 60).' },
+  { k: 'PDC_AVISOS_ACTIVOS',    t: 'Avisos activos',            tipo: 'bool', ayuda: 'Recordatorio de faltantes a los RAC de la obra (Telegram o mail).' },
+  { k: 'PDC_AVISO_HORAS',       t: 'Horarios del aviso',        tipo: 'horas', ayuda: 'Separados por coma, ej. 11:00,15:00,18:00. Llega dentro de esa hora.' },
+  { k: 'PDC_AVISO_DIAS',        t: 'Días con aviso',            tipo: 'dias' },
+  { k: 'PDC_CALENDARIO_ACTIVO', t: 'Calendario activo',         tipo: 'bool', ayuda: 'Los eventos con novedad van al calendario de la obra (23 hs o "Sincronizar ahora").' },
+  { k: 'PDC_CALENDARIO_DESDE',  t: 'Calendario desde',          tipo: 'date', ayuda: 'Solo van al calendario los registros desde esta fecha.' },
+];
+const LO_CFG_SOLO_LECTURA = [
+  { k: 'PDC_CALENDARIO_ID', t: 'ID del calendario', ayuda: 'Lo completa LO Sync (menú "Crear calendario de una obra").' },
+  { k: 'CARPETA_DRIVE_ID',  t: 'Carpeta de Drive',  ayuda: 'La crea LO Sync con el primer adjunto.' },
+];
+const esSi = v => /^(sí|si|true|verdadero|1)$/i.test(String(v == null ? '' : v).trim());
+
+function obrasLo() {
+  return D.obraApps.filter(a => a.app === 'lo').map(a => ({ ...a, ob: obra(a.obra_id) })).filter(a => a.ob)
+    .sort((a, b) => a.ob.codigo.localeCompare(b.ob.codigo));
+}
+function renderListaLo() {
+  const sel = st.loSel;
+  const items = [`<div class="item ${sel === PLANTILLA ? 'sel' : ''}" data-lo="${PLANTILLA}">
+      <div class="item-tit">📋 Plantilla <span class="chip">obras nuevas</span></div>
+      <div class="item-sub">Lo que recibe una obra al tildar LO</div></div>`]
+    .concat(obrasLo().map(a => `<div class="item ${sel === a.obra_id ? 'sel' : ''}" data-lo="${a.obra_id}">
+      <div class="item-tit">${esc(a.ob.codigo)} ${esc(a.ob.nombre_corto)} ${a.activa ? '' : '<span class="chip">inactiva en LO</span>'}</div>
+      <div class="item-sub">${esc([a.ob.nombre, a.ob.cliente].filter(x => !vacio(x)).join(' · ') || '—')}</div></div>`));
+  $('lo-lista').innerHTML = items.join('') + (obrasLo().length ? '' : '<div class="lista-vacia">Ninguna obra tiene LO tildado todavía (se tilda en Obras → Apps).</div>');
+  $('lo-lista').querySelectorAll('[data-lo]').forEach(el => el.onclick = () => seleccionarLo(el.dataset.lo));
+}
+async function seleccionarLo(id) {
+  if (st.loEd && st.loSel === id) return;
+  if (!(await puedoSalir())) return;
+  abrirLo(id);
+}
+
+// ── Modelo (igual para obra y plantilla) ──
+function loModeloDeObra(t, e, pt, pv, cfg) {
+  return {
+    tipos: t.map(x => ({ tipo: x.tipo, descripcion: x.descripcion || '', digitos: x.digitos, requiere: !!x.requiere_respuesta,
+      plazo: x.plazo_dias == null ? '' : String(x.plazo_dias), orden: x.orden, activo: !!x.activo }))
+      .sort((a, b) => a.orden - b.orden || a.tipo.localeCompare(b.tipo)),
+    etiquetas: e.map(x => ({ etiqueta: x.etiqueta, activo: !!x.activo })).sort((a, b) => a.etiqueta.localeCompare(b.etiqueta, 'es')),
+    pdcTipos: pt.map(x => ({ tipoId: x.tipo_id, tipo: x.tipo, orden: x.orden, multiple: !!x.multiple, activo: !!x.activo, ayuda: x.ayuda || '' }))
+      .sort((a, b) => a.orden - b.orden || a.tipoId.localeCompare(b.tipoId)),
+    pdcValores: pv.map(x => ({ valorId: x.valor_id, tipoId: x.tipo_id, valor: x.valor, orden: x.orden, esSinNovedad: !!x.es_sin_novedad,
+      impacto: x.impacto, responsable: x.responsable, obsObligatoria: !!x.obs_obligatoria, activo: !!x.activo })),
+    config: Object.fromEntries(cfg.map(x => [x.clave, x.valor == null ? '' : String(x.valor)])),
+  };
+}
+function loModeloDePlantilla(rows) {
+  const de = c => rows.filter(r => r.catalogo === c).sort((a, b) => a.orden - b.orden);
+  return {
+    tipos: de('tipos').map(r => ({ tipo: r.datos.tipo, descripcion: r.datos.descripcion || '', digitos: Number(r.datos.digitos) || 4,
+      requiere: !!r.datos.requiereRespuesta, plazo: r.datos.plazoDias === '' || r.datos.plazoDias == null ? '' : String(r.datos.plazoDias),
+      orden: r.orden, activo: r.datos.activo !== false })),
+    etiquetas: de('etiquetas').map(r => ({ etiqueta: r.datos.etiqueta, activo: true })),
+    pdcTipos: de('pdc_tipos').map(r => ({ tipoId: r.datos.tipoId, tipo: r.datos.tipo, orden: Number(r.datos.orden) || r.orden,
+      multiple: r.datos.multiple !== false, activo: r.datos.activo !== false, ayuda: r.datos.ayuda || '' })),
+    pdcValores: de('pdc_valores').map(r => ({ valorId: r.datos.valorId, tipoId: r.datos.tipoId, valor: r.datos.valor,
+      orden: Number(r.datos.orden) || r.orden, esSinNovedad: !!r.datos.esSinNovedad, impacto: Number(r.datos.impacto) || 0,
+      responsable: r.datos.responsable || '—', obsObligatoria: !!r.datos.obsObligatoria, activo: r.datos.activo !== false })),
+    config: Object.fromEntries(de('config').map(r => [r.datos.clave, r.datos.valor == null ? '' : String(r.datos.valor)])),
+  };
+}
+
+async function abrirLo(id) {
+  st.loSel = id; st.loEd = null;
+  renderListaLo();
+  $('lo-ficha').innerHTML = '<div class="cargando"><div class="spinner"></div>Cargando…</div>';
+  try {
+    let orig;
+    if (id === PLANTILLA) orig = loModeloDePlantilla(await q(sb.from('lo_plantilla').select('*')));
+    else {
+      const [t, e, pt, pv, cfg] = await Promise.all([
+        q(sb.from('lo_tipos').select('*').eq('obra_id', id)),
+        q(sb.from('lo_etiquetas').select('*').eq('obra_id', id)),
+        q(sb.from('lo_pdc_tipos').select('*').eq('obra_id', id)),
+        q(sb.from('lo_pdc_valores').select('*').eq('obra_id', id)),
+        q(sb.from('lo_config').select('*').eq('obra_id', id)),
+      ]);
+      orig = loModeloDeObra(t, e, pt, pv, cfg);
+    }
+    if (st.loSel !== id) return;
+    LO_CFG.filter(c => c.tipo === 'bool').forEach(c => { if (orig.config[c.k] !== undefined && orig.config[c.k] !== '') orig.config[c.k] = esSi(orig.config[c.k]) ? 'Sí' : 'No'; });
+    const tab = (st.loTabPrev && LO_TABS[st.loTabPrev]) ? st.loTabPrev : 'tipos';
+    st.loEd = { id, orig, w: clonar(orig), tab, pdcTipo: (orig.pdcTipos[0] || {}).tipoId || null };
+    renderFichaLo();
+  } catch (e) {
+    console.error('[abrirLo]', e);
+    $('lo-ficha').innerHTML = `<div class="ficha-vacia" style="color:var(--err-fg)">No se pudo cargar: ${esc(textoError(e))}</div>`;
+  }
+}
+
+// ── Ficha ──
+function loCambiado(sec, i, k) {
+  const ed = st.loEd, w = ed.w[sec][i], o = loOrigDe(sec, w);
+  return !o || String(o[k]) !== String(w[k]);
+}
+function loClave(sec, x) { return sec === 'tipos' ? x.tipo : sec === 'etiquetas' ? x.etiqueta : sec === 'pdcTipos' ? x.tipoId : x.valorId; }
+function loOrigDe(sec, x) { return st.loEd.orig[sec].find(o => loClave(sec, o) === loClave(sec, x)); }
+function inpLo(sec, i, k, tipo, extra) {
+  const ed = st.loEd, x = ed.w[sec][i], nuevo = !loOrigDe(sec, x), cls = !nuevo && loCambiado(sec, i, k) ? 'cambiado' : '';
+  const v = x[k];
+  if (tipo === 'bool') return `<input type="checkbox" class="${cls}" data-sec="${sec}" data-i="${i}" data-k="${k}" ${v ? 'checked' : ''} ${extra || ''}>`;
+  if (tipo === 'sel') return `<select class="inp ${cls}" data-sec="${sec}" data-i="${i}" data-k="${k}" ${extra || ''}>${extra && extra.opciones ? '' : ''}</select>`;
+  return `<input class="inp ${cls}" data-sec="${sec}" data-i="${i}" data-k="${k}" value="${esc(v)}" ${tipo === 'num' ? 'type="number" min="0"' : ''} ${extra || ''}>`;
+}
+function selLo(sec, i, k, opciones) {
+  const x = st.loEd.w[sec][i], nuevo = !loOrigDe(sec, x), cls = !nuevo && loCambiado(sec, i, k) ? 'cambiado' : '';
+  return `<select class="inp ${cls}" data-sec="${sec}" data-i="${i}" data-k="${k}">${opciones.map(([v, t]) => `<option value="${esc(v)}" ${String(x[k]) === String(v) ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+}
+function claseFila(sec, x) {
+  const o = loOrigDe(sec, x);
+  if (!o) return 'nuevo';
+  return Object.keys(x).some(k => String(o[k]) !== String(x[k])) ? 'cambiado' : '';
+}
+
+function renderFichaLo() {
+  const ed = st.loEd; if (!ed) return;
+  const esPl = ed.id === PLANTILLA, ob = esPl ? null : obra(ed.id);
+  const titulo = esPl ? 'Plantilla de LO' : `${esc(ob.codigo)} ${esc(ob.nombre_corto)}`;
+  const sub = esPl ? 'Es lo que se copia a una obra cuando se le tilda LO (en Obras → Apps). A las obras que ya la tienen no les cambia nada.'
+    : 'Configuración de LO en esta obra. LO la toma la próxima vez que se abra la obra; LO Sync, en su próxima corrida.';
+  const n = s => s === 'pdc' ? ed.w.pdcTipos.length : s === 'avisos' ? '' : ed.w[s].length;
+  $('lo-ficha').innerHTML = `
+    <div class="ficha-scroll">
+      <div class="ficha-tit">${titulo} <span class="chip app">LO</span></div>
+      <div class="ficha-sub">${sub}</div>
+      <div class="card">
+        <div class="tabs" id="lo-tabs">${Object.entries(LO_TABS).map(([k, t]) => `<button type="button" data-lotab="${k}" class="${k === ed.tab ? 'activa' : ''}">${t}${n(k) !== '' ? `<span class="cnt">${n(k)}</span>` : ''}</button>`).join('')}</div>
+        <div id="lo-sec"></div>
+      </div>
+    </div>
+    <div class="barra-guardar">
+      <span class="estado" id="lo-estado"></span>
+      <button class="btn sec" id="lo-descartar" type="button">Descartar</button>
+      <button class="btn" id="lo-guardar" type="button">Guardar cambios</button>
+    </div>`;
+  $('lo-tabs').querySelectorAll('[data-lotab]').forEach(b => b.onclick = () => { ed.tab = b.dataset.lotab; st.loTabPrev = ed.tab; renderFichaLo(); });
+  $('lo-descartar').onclick = async () => {
+    if (!cambiosLo().length) return;
+    if (await confirmar('Descartar cambios', [], { intro: '¿Volver a lo guardado?', textoOk: 'Descartar', peligro: true })) abrirLo(ed.id);
+  };
+  $('lo-guardar').onclick = guardarLo;
+  ({ tipos: renderLoTipos, etiquetas: renderLoEtiquetas, pdc: renderLoPdc, avisos: renderLoAvisos })[ed.tab]();
+  actualizarBarraLo();
+}
+
+function enganchar() {
+  const ed = st.loEd;
+  $('lo-sec').querySelectorAll('[data-sec]').forEach(el => el.oninput = el.onchange = () => {
+    const x = ed.w[el.dataset.sec][+el.dataset.i], k = el.dataset.k;
+    x[k] = el.type === 'checkbox' ? el.checked : (el.type === 'number' && el.value !== '' && k !== 'plazo' ? Number(el.value) : el.value);
+    if (el.type === 'checkbox' || el.tagName === 'SELECT') renderFichaLo();
+    else { el.classList.toggle('cambiado', !!loOrigDe(el.dataset.sec, x) && loCambiado(el.dataset.sec, +el.dataset.i, k)); actualizarBarraLo(); }
+  });
+}
+
+function renderLoTipos() {
+  const ed = st.loEd, w = ed.w.tipos;
+  $('lo-sec').innerHTML = `
+    <table class="tabla"><thead><tr><th>Código</th><th>Descripción</th><th>Dígitos</th><th>Requiere respuesta</th><th>Plazo (días)</th><th>Orden</th><th>Activo</th></tr></thead>
+    <tbody>${w.map((x, i) => `<tr class="${claseFila('tipos', x)}">
+      <td><b>${esc(x.tipo)}</b></td>
+      <td>${inpLo('tipos', i, 'descripcion')}</td>
+      <td style="width:80px">${inpLo('tipos', i, 'digitos', 'num', 'max="10"')}</td>
+      <td style="width:150px"><label class="check">${inpLo('tipos', i, 'requiere', 'bool')} sí</label></td>
+      <td style="width:110px">${inpLo('tipos', i, 'plazo', 'num')}</td>
+      <td style="width:80px">${inpLo('tipos', i, 'orden', 'num')}</td>
+      <td style="width:70px"><label class="check">${inpLo('tipos', i, 'activo', 'bool')}</label></td></tr>`).join('')}</tbody></table>
+    <div class="agregar-fila"><input class="inp" id="lo-tipo-nuevo" placeholder="Código nuevo (ej. CD)" maxlength="6" style="max-width:200px">
+      <button class="btn sec" id="lo-tipo-agregar" type="button">+ Agregar tipo</button></div>
+    <div class="nota">El código (OS, NP…) no se cambia una vez creado: lo usan los documentos. Un tipo que no se usa más se desactiva.
+      Plazo vacío con "requiere respuesta" = el documento queda "sin plazo".</div>`;
+  enganchar();
+  $('lo-tipo-agregar').onclick = () => {
+    const c = $('lo-tipo-nuevo').value.trim().toUpperCase();
+    if (!/^[A-Z0-9]{1,6}$/.test(c)) { toast('El código va en letras y números, hasta 6 (ej. CD).', true); return; }
+    if (w.find(x => x.tipo === c)) { toast('Ese tipo ya existe.', true); return; }
+    w.push({ tipo: c, descripcion: '', digitos: 4, requiere: false, plazo: '', orden: w.reduce((m, x) => Math.max(m, Number(x.orden) || 0), 0) + 1, activo: true });
+    renderFichaLo();
+  };
+  $('lo-tipo-nuevo').onkeydown = e => { if (e.key === 'Enter') $('lo-tipo-agregar').click(); };
+}
+
+function renderLoEtiquetas() {
+  const ed = st.loEd, w = ed.w.etiquetas, esPl = ed.id === PLANTILLA;
+  const quitadas = esPl ? ed.orig.etiquetas.filter(o => !w.find(x => x.etiqueta === o.etiqueta)) : [];
+  $('lo-sec').innerHTML = `
+    ${w.length || quitadas.length ? `<table class="tabla"><thead><tr><th>Etiqueta</th><th>${esPl ? '' : 'Activa'}</th></tr></thead>
+    <tbody>${w.map((x, i) => `<tr class="${claseFila('etiquetas', x)}"><td><b>${esc(x.etiqueta)}</b></td>
+      <td class="acciones">${esPl ? `<button class="btn-icono peligro" type="button" data-quitar-et="${i}">Quitar</button>` : `<label class="check">${inpLo('etiquetas', i, 'activo', 'bool')}</label>`}</td></tr>`).join('')}
+      ${quitadas.map(o => `<tr class="quitado"><td><b>${esc(o.etiqueta)}</b></td><td class="acciones"><button class="btn-icono" type="button" data-volver-et="${esc(o.etiqueta)}">Deshacer</button></td></tr>`).join('')}</tbody></table>`
+      : '<div class="nota">Sin etiquetas todavía.</div>'}
+    <div class="agregar-fila"><input class="inp" id="lo-et-nueva" placeholder="Etiqueta nueva" maxlength="60">
+      <button class="btn sec" id="lo-et-agregar" type="button">+ Agregar etiqueta</button></div>
+    <div class="nota">${esPl ? 'La plantilla no la usa ningún documento: acá se pueden quitar.' : 'El nombre no se cambia una vez creado: los documentos guardan el texto de la etiqueta. Una que no se usa más se desactiva.'}</div>`;
+  enganchar();
+  $('lo-sec').querySelectorAll('[data-quitar-et]').forEach(b => b.onclick = () => { w.splice(+b.dataset.quitarEt, 1); renderFichaLo(); });
+  $('lo-sec').querySelectorAll('[data-volver-et]').forEach(b => b.onclick = () => { w.push({ etiqueta: b.dataset.volverEt, activo: true }); renderFichaLo(); });
+  $('lo-et-agregar').onclick = () => {
+    const t = $('lo-et-nueva').value.trim();
+    if (!t) return;
+    if (w.find(x => x.etiqueta.toLowerCase() === t.toLowerCase())) { toast('Esa etiqueta ya existe.', true); return; }
+    w.push({ etiqueta: t, activo: true });
+    renderFichaLo();
+  };
+  $('lo-et-nueva').onkeydown = e => { if (e.key === 'Enter') $('lo-et-agregar').click(); };
+}
+
+function sigId(lista, pref, campo) {
+  const re = new RegExp('^' + pref.replace(/[-]/g, '\\-') + '(\\d+)$');
+  const max = lista.reduce((m, x) => { const r = re.exec(x[campo]); return r ? Math.max(m, Number(r[1])) : m; }, 0);
+  return pref + String(max + 1).padStart(2, '0');
+}
+function renderLoPdc() {
+  const ed = st.loEd, wt = ed.w.pdcTipos, wv = ed.w.pdcValores;
+  if (!wt.find(t => t.tipoId === ed.pdcTipo)) ed.pdcTipo = (wt[0] || {}).tipoId || null;
+  const tSel = wt.find(t => t.tipoId === ed.pdcTipo);
+  const vals = wv.map((v, i) => ({ v, i })).filter(x => x.v.tipoId === ed.pdcTipo)
+    .sort((a, b) => (b.v.esSinNovedad - a.v.esSinNovedad) || (a.v.orden - b.v.orden));
+  $('lo-sec').innerHTML = `
+    <h3 style="font-family:'Bebas Neue',sans-serif;font-weight:400;letter-spacing:.6px;margin:2px 0 8px">Tipos del parte</h3>
+    <table class="tabla"><thead><tr><th>ID</th><th>Tipo</th><th>Ayuda</th><th>Orden</th><th>Múltiple</th><th>Activo</th><th></th></tr></thead>
+    <tbody>${wt.map((t, i) => `<tr class="${claseFila('pdcTipos', t)}" ${t.tipoId === ed.pdcTipo ? 'style="outline:2px solid var(--accent);outline-offset:-2px"' : ''}>
+      <td><b>${esc(t.tipoId)}</b></td><td>${inpLo('pdcTipos', i, 'tipo')}</td><td>${inpLo('pdcTipos', i, 'ayuda')}</td>
+      <td style="width:76px">${inpLo('pdcTipos', i, 'orden', 'num')}</td>
+      <td style="width:80px"><label class="check">${inpLo('pdcTipos', i, 'multiple', 'bool')}</label></td>
+      <td style="width:66px"><label class="check">${inpLo('pdcTipos', i, 'activo', 'bool')}</label></td>
+      <td class="acciones"><button class="btn-icono" type="button" data-ver-tipo="${esc(t.tipoId)}">Valores ›</button></td></tr>`).join('')}</tbody></table>
+    <div class="agregar-fila"><input class="inp" id="lo-pt-nuevo" placeholder="Tipo nuevo (ej. Medio ambiente)" maxlength="80">
+      <button class="btn sec" id="lo-pt-agregar" type="button">+ Agregar tipo</button></div>
+    ${tSel ? `
+    <h3 style="font-family:'Bebas Neue',sans-serif;font-weight:400;letter-spacing:.6px;margin:20px 0 8px">Valores de ${esc(tSel.tipoId)} · ${esc(tSel.tipo)}</h3>
+    <table class="tabla"><thead><tr><th>ID</th><th>Valor</th><th>Sin novedad</th><th>Impacto</th><th>Responsable</th><th>Obs. obligatoria</th><th>Orden</th><th>Activo</th></tr></thead>
+    <tbody>${vals.map(({ v, i }) => `<tr class="${claseFila('pdcValores', v)}">
+      <td><b>${esc(v.valorId)}</b></td><td>${inpLo('pdcValores', i, 'valor')}</td>
+      <td style="width:95px">${v.esSinNovedad ? '<span class="chip ok">sí</span>' : '<span class="chip">no</span>'}</td>
+      <td style="width:140px">${selLo('pdcValores', i, 'impacto', LO_IMPACTO.map((t, k) => [k, t]))}</td>
+      <td style="width:120px">${selLo('pdcValores', i, 'responsable', LO_RESP.map(r => [r, r]))}</td>
+      <td style="width:115px"><label class="check">${inpLo('pdcValores', i, 'obsObligatoria', 'bool')}</label></td>
+      <td style="width:76px">${inpLo('pdcValores', i, 'orden', 'num')}</td>
+      <td style="width:66px"><label class="check">${inpLo('pdcValores', i, 'activo', 'bool')}</label></td></tr>`).join('')}</tbody></table>
+    <div class="agregar-fila"><input class="inp" id="lo-pv-nuevo" placeholder="Valor nuevo (ej. Granizo)" maxlength="80">
+      <button class="btn sec" id="lo-pv-agregar" type="button">+ Agregar valor</button></div>` : ''}
+    <div class="nota">Los IDs (T01, T01-V02) no se cambian: los usan los eventos ya cargados. Lo que no se usa más se desactiva.
+      Cada tipo activo necesita exactamente un valor "sin novedad" activo (lo usa "Todo sin novedad").
+      El impacto y el responsable de un valor se aplican a los registros nuevos; los ya cargados conservan lo que tenían.</div>`;
+  enganchar();
+  $('lo-sec').querySelectorAll('[data-ver-tipo]').forEach(b => b.onclick = () => { ed.pdcTipo = b.dataset.verTipo; renderFichaLo(); });
+  $('lo-pt-agregar').onclick = () => {
+    const nom = $('lo-pt-nuevo').value.trim();
+    if (!nom) return;
+    if (wt.find(t => t.tipo.toLowerCase() === nom.toLowerCase())) { toast('Ya hay un tipo con ese nombre.', true); return; }
+    const tipoId = sigId(wt, 'T', 'tipoId');
+    wt.push({ tipoId, tipo: nom, orden: wt.reduce((m, t) => Math.max(m, Number(t.orden) || 0), 0) + 1, multiple: true, activo: true, ayuda: '' });
+    // nace con su "Sin novedad" (lo exige "Todo sin novedad")
+    wv.push({ valorId: tipoId + '-V01', tipoId, valor: 'Sin novedad', orden: 1, esSinNovedad: true, impacto: 0, responsable: '—', obsObligatoria: false, activo: true });
+    ed.pdcTipo = tipoId;
+    renderFichaLo();
+  };
+  if (tSel) $('lo-pv-agregar').onclick = () => {
+    const nom = $('lo-pv-nuevo').value.trim();
+    if (!nom) return;
+    if (wv.find(v => v.tipoId === tSel.tipoId && v.valor.toLowerCase() === nom.toLowerCase())) { toast('Ese valor ya existe en el tipo.', true); return; }
+    const deTipo = wv.filter(v => v.tipoId === tSel.tipoId);
+    wv.push({ valorId: sigId(deTipo, tSel.tipoId + '-V', 'valorId'), tipoId: tSel.tipoId, valor: nom,
+      orden: deTipo.reduce((m, v) => Math.max(m, Number(v.orden) || 0), 0) + 1, esSinNovedad: false, impacto: 1, responsable: 'Cliente', obsObligatoria: false, activo: true });
+    renderFichaLo();
+  };
+}
+
+function renderLoAvisos() {
+  const ed = st.loEd, w = ed.w.config, o = ed.orig.config, esPl = ed.id === PLANTILLA;
+  const cmb = k => String(w[k] ?? '') !== String(o[k] ?? '') ? 'cambiado' : '';
+  const campo = c => {
+    const v = w[c.k] ?? '';
+    let input;
+    if (c.tipo === 'bool') input = `<label class="check" style="margin-top:6px"><input type="checkbox" data-cfg="${c.k}" ${esSi(v) ? 'checked' : ''}> sí</label>`;
+    else if (c.tipo === 'dias') input = `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">${LO_DIAS.split('').map(d => `<label class="check"><input type="checkbox" data-dia="${d}" ${String(v).includes(d) ? 'checked' : ''}> ${LO_DIAS_TXT[d]}</label>`).join('')}</div>`;
+    else input = `<input class="inp ${cmb(c.k)}" data-cfg="${c.k}" value="${esc(v)}" ${c.tipo === 'date' ? 'type="date"' : c.tipo === 'num' ? 'type="number" min="1" max="60"' : ''}>`;
+    return `<div class="campo ${c.tipo === 'dias' || c.tipo === 'horas' ? 'c2' : ''}"><label style="${cmb(c.k) ? 'color:var(--warn-fg)' : ''}">${c.t}</label>${input}${c.ayuda ? `<div class="nota" style="margin-top:2px">${esc(c.ayuda)}</div>` : ''}</div>`;
+  };
+  $('lo-sec').innerHTML = `
+    <div class="grid">${LO_CFG.map(campo).join('')}</div>
+    ${esPl ? '<div class="nota">El calendario y la carpeta de Drive son de cada obra: no van en la plantilla.</div>' : `
+    <h3 style="font-family:'Bebas Neue',sans-serif;font-weight:400;letter-spacing:.6px;margin:18px 0 8px">Los maneja LO Sync (solo lectura)</h3>
+    <div class="grid">${LO_CFG_SOLO_LECTURA.map(c => `<div class="campo c2"><label>${c.t}</label><input class="inp" value="${esc(w[c.k] || '—')}" disabled><div class="nota" style="margin-top:2px">${esc(c.ayuda)}</div></div>`).join('')}</div>`}
+    <div class="nota">Los avisos van a las personas con perfil <b>rac</b> en la obra (Obras → Miembros → LO), a su chat_id de Telegram o, si no tienen, por mail.</div>`;
+  $('lo-sec').querySelectorAll('[data-cfg]').forEach(el => el.oninput = el.onchange = () => {
+    const k = el.dataset.cfg;
+    w[k] = el.type === 'checkbox' ? (el.checked ? 'Sí' : 'No') : el.value;
+    if (el.type === 'checkbox') renderFichaLo();
+    else { el.classList.toggle('cambiado', !!cmb(k)); actualizarBarraLo(); }
+  });
+  $('lo-sec').querySelectorAll('[data-dia]').forEach(el => el.onchange = () => {
+    const sel = Array.from($('lo-sec').querySelectorAll('[data-dia]:checked')).map(x => x.dataset.dia);
+    w.PDC_AVISO_DIAS = LO_DIAS.split('').filter(d => sel.includes(d)).join('');
+    renderFichaLo();
+  });
+}
+
+// ── Cambios, validación y guardado ──
+function txtV(v) { return v === '' || v == null ? '—' : typeof v === 'boolean' ? (v ? 'sí' : 'no') : String(v); }
+function cambiosLo() {
+  const ed = st.loEd; if (!ed) return [];
+  const out = [], w = ed.w, o = ed.orig;
+  const T = { descripcion: 'descripción', digitos: 'dígitos', requiere: 'requiere respuesta', plazo: 'plazo', orden: 'orden', activo: 'activo',
+              tipo: 'nombre', ayuda: 'ayuda', multiple: 'múltiple', valor: 'nombre', impacto: 'impacto', responsable: 'responsable', obsObligatoria: 'obs. obligatoria' };
+  const seccion = (sec, rot, nombre) => {
+    w[sec].forEach(x => {
+      const a = o[sec].find(y => loClave(sec, y) === loClave(sec, x));
+      if (!a) { out.push({ tipo: 'mas', html: `<b>${rot}:</b> se agrega ${esc(nombre(x))}` }); return; }
+      Object.keys(x).forEach(k => {
+        if (String(a[k]) === String(x[k])) return;
+        const desact = k === 'activo' && !x[k];
+        out.push({ tipo: desact ? 'menos' : 'cambio', html: `<b>${rot} ${esc(nombre(x))}:</b> ${T[k] || k} ${esc(txtV(a[k]))} → <b>${esc(txtV(x[k]))}</b>`,
+          aviso: desact ? 'Deja de ofrecerse para cargas nuevas; lo ya cargado no cambia.' : '' });
+      });
+    });
+    o[sec].forEach(a => { if (!w[sec].find(x => loClave(sec, x) === loClave(sec, a))) out.push({ tipo: 'menos', html: `<b>${rot}:</b> se quita ${esc(nombre(a))} de la plantilla` }); });
+  };
+  seccion('tipos', 'Tipo', x => x.tipo);
+  seccion('etiquetas', 'Etiqueta', x => x.etiqueta);
+  seccion('pdcTipos', 'PdC tipo', x => `${x.tipoId} ${x.tipo}`);
+  seccion('pdcValores', 'PdC valor', x => `${x.valorId} ${x.valor}`);
+  const T2 = Object.fromEntries(LO_CFG.map(c => [c.k, c.t]));
+  LO_CFG.forEach(c => {
+    const a = o.config[c.k] ?? '', b = w.config[c.k] ?? '';
+    if (String(a) !== String(b)) out.push({ tipo: 'cambio', html: `<b>${T2[c.k]}:</b> ${esc(txtV(a))} → <b>${esc(txtV(b))}</b>`,
+      aviso: c.k === 'PDC_AVISOS_ACTIVOS' && esSi(b) ? 'Empiezan a llegar avisos a los RAC de la obra en los horarios indicados.' : '' });
+  });
+  return out;
+}
+function actualizarBarraLo() {
+  const n = cambiosLo().length, el = $('lo-estado'); if (!el) return;
+  el.textContent = n ? `${n} cambio${n > 1 ? 's' : ''} sin guardar` : 'Sin cambios';
+  el.className = 'estado' + (n ? ' sucio' : '');
+  $('lo-guardar').disabled = !n; $('lo-descartar').disabled = !n;
+}
+function validarLo() {
+  const w = st.loEd.w;
+  for (const t of w.tipos) {
+    if (!(Number(t.digitos) >= 1 && Number(t.digitos) <= 10)) return `Tipo ${t.tipo}: los dígitos van de 1 a 10.`;
+    if (t.plazo !== '' && !(Number.isInteger(Number(t.plazo)) && Number(t.plazo) >= 0)) return `Tipo ${t.tipo}: el plazo es un número de días (o vacío).`;
+    if (!Number.isInteger(Number(t.orden))) return `Tipo ${t.tipo}: el orden es un número.`;
+  }
+  for (const t of w.pdcTipos) {
+    if (vacio(t.tipo)) return `PdC ${t.tipoId}: falta el nombre del tipo.`;
+    if (!Number.isInteger(Number(t.orden))) return `PdC ${t.tipoId}: el orden es un número.`;
+    if (t.activo) {
+      const sn = w.pdcValores.filter(v => v.tipoId === t.tipoId && v.activo && v.esSinNovedad).length;
+      if (sn !== 1) return `PdC ${t.tipoId} ${t.tipo}: tiene que tener exactamente un valor "sin novedad" activo (tiene ${sn}).`;
+    }
+  }
+  for (const v of w.pdcValores) {
+    if (vacio(v.valor)) return `PdC ${v.valorId}: falta el nombre del valor.`;
+    if (!Number.isInteger(Number(v.orden))) return `PdC ${v.valorId}: el orden es un número.`;
+  }
+  const c = w.config;
+  if (!vacio(c.PDC_DIAS_ATRAS) && !(Number.isInteger(Number(c.PDC_DIAS_ATRAS)) && Number(c.PDC_DIAS_ATRAS) >= 1 && Number(c.PDC_DIAS_ATRAS) <= 60)) return 'Días hacia atrás: un número de 1 a 60.';
+  const horas = String(c.PDC_AVISO_HORAS || '').split(/[,;\s]+/).filter(Boolean);
+  if (horas.some(h => !/^([01]?\d|2[0-3])(:00)?$/.test(h))) return 'Horarios del aviso: horas enteras de 0 a 23, ej. 11:00,15:00,18:00.';
+  if (esSi(c.PDC_AVISOS_ACTIVOS) && !horas.length) return 'Avisos activos: falta al menos un horario.';
+  if (esSi(c.PDC_AVISOS_ACTIVOS) && vacio(c.PDC_AVISO_DIAS)) return 'Avisos activos: falta al menos un día.';
+  return '';
+}
+function normHoras(v) {
+  return String(v || '').split(/[,;\s]+/).filter(Boolean).map(h => String(Number(h.split(':')[0])).padStart(2, '0') + ':00')
+    .filter((h, i, a) => a.indexOf(h) === i).sort().join(',');
+}
+async function guardarLo() {
+  const ed = st.loEd, cambios = cambiosLo();
+  if (!cambios.length) return;
+  const err = validarLo(); if (err) { avisar('No se puede guardar', esc(err)); return; }
+  const esPl = ed.id === PLANTILLA;
+  const ok = await confirmar(esPl ? 'Guardar la plantilla de LO' : `Guardar la configuración de LO · ${esc(etiqObra(obra(ed.id)))}`, cambios, { textoOk: 'Guardar' });
+  if (!ok) return;
+  const btn = $('lo-guardar'); btn.disabled = true; btn.textContent = 'Guardando…';
+  const w = ed.w, o = ed.orig, id = ed.id;
+  if (w.config.PDC_AVISO_HORAS !== undefined) w.config.PDC_AVISO_HORAS = normHoras(w.config.PDC_AVISO_HORAS);
+  const cambio = (sec, x) => { const a = o[sec].find(y => loClave(sec, y) === loClave(sec, x)); return !a || Object.keys(x).some(k => String(a[k]) !== String(x[k])); };
+  try {
+    if (esPl) await guardarPlantillaLo(w, o);
+    else {
+      const tipos = w.tipos.filter(x => cambio('tipos', x)).map(x => ({ obra_id: id, tipo: x.tipo, descripcion: x.descripcion.trim(), digitos: Number(x.digitos),
+        requiere_respuesta: !!x.requiere, plazo_dias: x.plazo === '' ? null : Number(x.plazo), orden: Number(x.orden), activo: !!x.activo }));
+      if (tipos.length) await q(sb.from('lo_tipos').upsert(tipos, { onConflict: 'obra_id,tipo' }));
+      const et = w.etiquetas.filter(x => cambio('etiquetas', x)).map(x => ({ obra_id: id, etiqueta: x.etiqueta, activo: !!x.activo }));
+      if (et.length) await q(sb.from('lo_etiquetas').upsert(et, { onConflict: 'obra_id,etiqueta' }));
+      const pt = w.pdcTipos.filter(x => cambio('pdcTipos', x)).map(x => ({ obra_id: id, tipo_id: x.tipoId, tipo: x.tipo.trim(), orden: Number(x.orden),
+        multiple: !!x.multiple, activo: !!x.activo, ayuda: x.ayuda.trim() }));
+      if (pt.length) await q(sb.from('lo_pdc_tipos').upsert(pt, { onConflict: 'obra_id,tipo_id' }));
+      const pv = w.pdcValores.filter(x => cambio('pdcValores', x)).map(x => ({ obra_id: id, valor_id: x.valorId, tipo_id: x.tipoId, valor: x.valor.trim(),
+        orden: Number(x.orden), es_sin_novedad: !!x.esSinNovedad, impacto: Number(x.impacto), responsable: x.responsable, obs_obligatoria: !!x.obsObligatoria, activo: !!x.activo }));
+      if (pv.length) await q(sb.from('lo_pdc_valores').upsert(pv, { onConflict: 'obra_id,valor_id' }));
+      const cfg = LO_CFG.filter(c => String(w.config[c.k] ?? '') !== String(o.config[c.k] ?? '')).map(c => ({ obra_id: id, clave: c.k, valor: String(w.config[c.k] ?? '') }));
+      if (cfg.length) await q(sb.from('lo_config').upsert(cfg, { onConflict: 'obra_id,clave' }));
+    }
+    st.loEd = null;
+    await abrirLo(id);
+    toast('Configuración de LO guardada');
+  } catch (e) {
+    console.error('[guardarLo]', e);
+    btn.disabled = false; btn.textContent = 'Guardar cambios';
+    await avisar('No se pudo guardar', esc(textoError(e)) + '<div class="nota">Si una parte llegó a guardarse, la ficha se recarga con lo que quedó en la base.</div>');
+    st.loEd = null; abrirLo(id);
+  }
+}
+/** Plantilla: cada catálogo que cambió se reescribe con orden 1..n (upsert) y se quitan las filas sobrantes. */
+async function guardarPlantillaLo(w, o) {
+  const porOrden = (a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0);
+  const catalogos = {
+    tipos: w.tipos.slice().sort(porOrden).map(x => ({ tipo: x.tipo, descripcion: x.descripcion.trim(), digitos: Number(x.digitos),
+      requiereRespuesta: !!x.requiere, plazoDias: x.plazo === '' ? '' : Number(x.plazo), activo: !!x.activo })),
+    etiquetas: w.etiquetas.map(x => ({ etiqueta: x.etiqueta })),
+    pdc_tipos: w.pdcTipos.slice().sort(porOrden).map(x => ({ tipoId: x.tipoId, tipo: x.tipo.trim(), orden: Number(x.orden), multiple: !!x.multiple, activo: !!x.activo, ayuda: x.ayuda.trim() })),
+    pdc_valores: w.pdcValores.slice().sort((a, b) => a.tipoId.localeCompare(b.tipoId) || porOrden(a, b)).map(x => ({ valorId: x.valorId, tipoId: x.tipoId, valor: x.valor.trim(),
+      orden: Number(x.orden), esSinNovedad: !!x.esSinNovedad, impacto: Number(x.impacto), responsable: x.responsable, obsObligatoria: !!x.obsObligatoria, activo: !!x.activo })),
+    config: LO_CFG.map(c => ({ clave: c.k, valor: String(w.config[c.k] ?? '') })),
+  };
+  const sec = { tipos: 'tipos', etiquetas: 'etiquetas', pdc_tipos: 'pdcTipos', pdc_valores: 'pdcValores' };
+  const cambio = c => c === 'config'
+    ? LO_CFG.some(x => String(w.config[x.k] ?? '') !== String(o.config[x.k] ?? ''))
+    : JSON.stringify(w[sec[c]]) !== JSON.stringify(o[sec[c]]);
+  for (const c of Object.keys(catalogos)) {
+    if (!cambio(c)) continue;
+    const filas = catalogos[c].map((datos, k) => ({ catalogo: c, orden: k + 1, datos }));
+    if (filas.length) await q(sb.from('lo_plantilla').upsert(filas, { onConflict: 'catalogo,orden' }));
+    await q(sb.from('lo_plantilla').delete().eq('catalogo', c).gt('orden', filas.length));
+  }
 }
 
 /* ════════════════════════════════════════════════════════
