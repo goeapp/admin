@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GOE Admin</title>
 <!--
-  index_admin_v1_1.html — GOE Admin v1.1 (13-oct-2026)
+  index_admin_v1_2.html — GOE Admin v1.2 (13-oct-2026)
   Repo: goeapp/admin → https://goeapp.github.io/admin/ (subir como index.html)
 
   Administración del stack sobre Supabase (proyecto PWAgoe), solo para el admin global.
@@ -13,17 +13,21 @@
   · Personas: lista + ficha (datos, mails, apps, accesos de solo lectura)
   · MdT:      usuarios y listas (etiquetas, marcas, tareas, herramientas, config)
   · LO:       plantilla + configuración por obra (tipos, etiquetas, PdC, avisos y calendario)
+  · BDC:      general (máscaras genéricas, marcas manuales, informe semanal) + por obra (carpeta de Drive, máscaras)
   · Login por código (Supabase Auth), igual que MdT v15.0, con sesión propia (admin-sb-auth).
   · Todos los cambios se guardan con botón y un resumen para confirmar.
   · Solo computadora (sin service worker).
 
   Requiere en Supabase: goe_esquema_v1_0.sql + goe_datos_v1_0.sql + goe_admin_v1_0.sql
-                        + lo_esquema_v8_0_0.sql (tablas lo_ y lo_plantilla).
+                        + lo_esquema_v8_0_0.sql (tablas lo_ y lo_plantilla)
+                        + bdc_esquema_v7_0_0.sql (tablas bdc_).
 
   Changelog
   v1.0 — primera versión.
   v1.1 — pestaña LO (Plantilla + obras con LO: Tipos · Etiquetas · PdC · Avisos y calendario).
          Login con emailRedirectTo → el mail del código dice "GOE ADMIN".
+  v1.2 — pestaña BDC: General (máscaras genéricas, marcas manuales, informe semanal del agente)
+         + obras con BDC (carpeta raíz de Drive, máscaras de la obra). Prueba de máscaras en vivo.
 -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
@@ -259,6 +263,7 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
       <button type="button" data-vista="personas">Personas</button>
       <button type="button" data-vista="mdt">MdT</button>
       <button type="button" data-vista="lo">LO</button>
+      <button type="button" data-vista="bdc">BDC</button>
     </nav>
     <span class="hdr-sep"></span>
     <span class="hdr-user" id="hdr-user"></span>
@@ -322,6 +327,17 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
     </aside>
     <div class="col-ficha" id="lo-ficha"><div class="ficha-vacia">Elegí la plantilla o una obra de la lista.</div></div>
   </section>
+
+  <!-- BDC (v1.2) -->
+  <section class="vista" id="vista-bdc">
+    <aside class="col-lista">
+      <div class="lista-top">
+        <div class="nota" style="margin:0">Configuración general de BDC y la de cada obra con BDC tildado.</div>
+      </div>
+      <div class="lista-items" id="bdc-lista"></div>
+    </aside>
+    <div class="col-ficha" id="bdc-ficha"><div class="ficha-vacia">Elegí General o una obra de la lista.</div></div>
+  </section>
 </div>
 
 <!-- MODAL GENÉRICO -->
@@ -340,7 +356,7 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
 /* ════════════════════════════════════════════════════════
    CONFIGURACIÓN
 ════════════════════════════════════════════════════════ */
-const VERSION_UI     = 'v1.1';
+const VERSION_UI     = 'v1.2';
 const REDIRECT_MAIL  = 'https://goeapp.github.io/admin/';   // la plantilla del mail lo usa para poner "GOE ADMIN"
 const SUPABASE_URL   = 'https://uhuftsxrzwhmvzygcuvp.supabase.co';
 const SUPABASE_KEY   = 'sb_publishable_TCibRAnzgaDIbn_MIirw6w_FltKG8X3';
@@ -389,6 +405,8 @@ const st = {
   personaSel: null, personaEd: null,   // personaEd = { nueva, orig, w }
   mdtTab: 'usuarios', mdt: {}, mdtOrden: null,  // mdtOrden = filas reordenadas sin guardar
   loSel: null, loEd: null, loTabPrev: 'tipos',  // loEd = { id, orig, w, tab, pdcTipo } (id = uuid de obra o 'plantilla')
+  bdcSel: null, bdcEd: null, bdcTabGen: 'mascaras', bdcTabObra: 'carpeta',  // v1.2 — bdcEd = { id, orig, w, tab, prueba } (id = uuid de obra o 'general')
+  bdcCarpetas: null, bdcGenericas: null,
 };
 let emailPendiente = '';
 
@@ -561,7 +579,7 @@ async function cargarDatos() {
    NAVEGACIÓN (con aviso de cambios sin guardar)
 ════════════════════════════════════════════════════════ */
 function haySinGuardar() {
-  return (st.obraEd && cambiosObra().length > 0) || (st.personaEd && cambiosPersona().length > 0) || !!st.mdtOrden || (st.loEd && cambiosLo().length > 0);
+  return (st.obraEd && cambiosObra().length > 0) || (st.personaEd && cambiosPersona().length > 0) || !!st.mdtOrden || (st.loEd && cambiosLo().length > 0) || (st.bdcEd && cambiosBdc().length > 0);
 }
 async function puedoSalir() {
   if (!haySinGuardar()) return true;
@@ -570,7 +588,7 @@ async function puedoSalir() {
 async function irVista(v) {
   if (v === st.vista && st.appIniciada) return;
   if (!(await puedoSalir())) return;
-  st.obraEd = null; st.personaEd = null; st.mdtOrden = null; st.loEd = null;
+  st.obraEd = null; st.personaEd = null; st.mdtOrden = null; st.loEd = null; st.bdcEd = null;
   st.vista = v;
   document.querySelectorAll('.hdr-nav button').forEach(b => b.classList.toggle('activa', b.dataset.vista === v));
   document.querySelectorAll('.vista').forEach(s => s.classList.toggle('activa', s.id === 'vista-' + v));
@@ -578,6 +596,7 @@ async function irVista(v) {
   if (v === 'personas') { renderListaPersonas(); st.personaSel ? abrirPersona(st.personaSel) : vaciarFicha('persona-ficha', 'Elegí una persona de la lista.'); }
   if (v === 'mdt') renderMdt();
   if (v === 'lo') { renderListaLo(); abrirLo(st.loSel || PLANTILLA); }
+  if (v === 'bdc') { renderListaBdc(); abrirBdc(st.bdcSel || BDC_GENERAL); }
 }
 function vaciarFicha(id, txt) { $(id).innerHTML = `<div class="ficha-vacia">${esc(txt)}</div>`; }
 
@@ -1721,6 +1740,398 @@ async function guardarPlantillaLo(w, o) {
     const filas = catalogos[c].map((datos, k) => ({ catalogo: c, orden: k + 1, datos }));
     if (filas.length) await q(sb.from('lo_plantilla').upsert(filas, { onConflict: 'catalogo,orden' }));
     await q(sb.from('lo_plantilla').delete().eq('catalogo', c).gt('orden', filas.length));
+  }
+}
+
+/* ════════════════════════════════════════════════════════
+   v1.2 — BDC (Buscador Documental de Contrato): configuración
+   Mismo patrón que LO: lista a la izquierda, ficha con sub-pestañas,
+   barra "N cambios sin guardar", resumen para confirmar.
+   · General (todas las obras): máscaras genéricas, tipos de marca manual
+     e informe semanal del agente (goe_app_config).
+   · Cada obra con BDC: carpeta raíz de Drive y máscaras propias.
+   Criterio (13-oct): lo que ya se usa no se borra, se desactiva.
+════════════════════════════════════════════════════════ */
+const BDC_GENERAL = 'general';
+const BDC_TABS_GEN = { mascaras: 'Máscaras genéricas', marcas: 'Marcas manuales', informe: 'Informe semanal' };
+const BDC_TABS_OBRA = { carpeta: 'Carpeta de Drive', mascaras: 'Máscaras de la obra' };
+const BDC_MASC_CAMPOS = { nombre: 'nombre', bloquesMin: 'bloques mín.', bloquesMax: 'bloques máx.', largoMin: 'largo mín.', largoMax: 'largo máx.', separador: 'separador', orden: 'orden', activo: 'activa' };
+const BDC_INFORME = [
+  { k: 'CarpetaExportAgente', t: 'Carpeta del informe (Drive)', ayuda: 'Donde BDC Sync deja cada domingo el Doc BDC_Actividad_aaaa-mm-dd que lee el agente. Pegá el link o el ID de la carpeta.' },
+  { k: 'TopeDetalleExport', t: 'Tope del detalle', ayuda: 'Máximo de eventos en la sección 5 del Doc (los más importantes primero).' }
+];
+
+function obrasBdc() {
+  return D.obraApps.filter(a => a.app === 'bdc').map(a => ({ ...a, ob: obra(a.obra_id) })).filter(a => a.ob)
+    .sort((a, b) => a.ob.codigo.localeCompare(b.ob.codigo));
+}
+function idDriveDe(v) {
+  const t = String(v || '').trim();
+  if (!t) return '';
+  let m = t.match(/\/folders\/([a-zA-Z0-9_-]{10,})/) || t.match(/\/d\/([a-zA-Z0-9_-]{10,})/) || t.match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
+  if (m) return m[1];
+  return /^[a-zA-Z0-9_-]{10,}$/.test(t) ? t : null;   // null = no se reconoce
+}
+function renderListaBdc() {
+  const sel = st.bdcSel;
+  const items = [`<div class="item ${sel === BDC_GENERAL ? 'sel' : ''}" data-bdc="${BDC_GENERAL}">
+      <div class="item-tit">⚙️ General <span class="chip">todas las obras</span></div>
+      <div class="item-sub">Máscaras genéricas, marcas manuales e informe semanal</div></div>`]
+    .concat(obrasBdc().map(a => {
+      const c = (st.bdcCarpetas || {})[a.obra_id];
+      return `<div class="item ${sel === a.obra_id ? 'sel' : ''}" data-bdc="${a.obra_id}">
+      <div class="item-tit">${esc(a.ob.codigo)} ${esc(a.ob.nombre_corto)} ${a.activa ? '' : '<span class="chip">inactiva en BDC</span>'} ${c === '' ? '<span class="chip warn">sin carpeta</span>' : ''}</div>
+      <div class="item-sub">${esc([a.ob.nombre, a.ob.cliente].filter(x => !vacio(x)).join(' · ') || '—')}</div></div>`;
+    }));
+  $('bdc-lista').innerHTML = items.join('') + (obrasBdc().length ? '' : '<div class="lista-vacia">Ninguna obra tiene BDC tildado todavía (se tilda en Obras → Apps).</div>');
+  $('bdc-lista').querySelectorAll('[data-bdc]').forEach(el => el.onclick = () => seleccionarBdc(el.dataset.bdc));
+}
+async function seleccionarBdc(id) {
+  if (st.bdcEd && st.bdcSel === id) return;
+  if (!(await puedoSalir())) return;
+  abrirBdc(id);
+}
+async function cargarCarpetasBdc() {
+  const filas = await q(sb.from('bdc_obras').select('obra_id, carpeta_raiz_id'));
+  st.bdcCarpetas = Object.fromEntries(filas.map(f => [f.obra_id, f.carpeta_raiz_id || '']));
+}
+
+function mascaraModelo(x) {
+  return { id: x.id, nombre: x.nombre, bloquesMin: x.bloques_min, bloquesMax: x.bloques_max, largoMin: x.largo_min, largoMax: x.largo_max,
+    separador: x.separador, orden: x.orden, activo: !!x.activo };
+}
+async function abrirBdc(id) {
+  st.bdcSel = id; st.bdcEd = null;
+  try { await cargarCarpetasBdc(); } catch (e) { /* la lista se muestra igual */ }
+  renderListaBdc();
+  $('bdc-ficha').innerHTML = '<div class="cargando"><div class="spinner"></div>Cargando…</div>';
+  try {
+    let orig;
+    if (id === BDC_GENERAL) {
+      const [masc, marcas, cfg] = await Promise.all([
+        q(sb.from('bdc_mascaras').select('*').is('obra_id', null).order('orden').order('id')),
+        q(sb.from('bdc_marcas').select('*').order('orden')),
+        q(sb.from('goe_app_config').select('clave, valor').eq('app', 'bdc'))
+      ]);
+      const c = Object.fromEntries(cfg.map(x => [x.clave, x.valor == null ? '' : String(x.valor)]));
+      orig = { mascaras: masc.map(mascaraModelo),
+        marcas: marcas.map(m => ({ marcaInterna: m.marca_interna, etiquetaVisible: m.etiqueta_visible, orden: m.orden, activo: !!m.activo })),
+        informe: Object.fromEntries(BDC_INFORME.map(x => [x.k, c[x.k] ?? ''])) };
+    } else {
+      const [masc, carp] = await Promise.all([
+        q(sb.from('bdc_mascaras').select('*').eq('obra_id', id).order('orden').order('id')),
+        q(sb.from('bdc_obras').select('carpeta_raiz_id').eq('obra_id', id))
+      ]);
+      orig = { mascaras: masc.map(mascaraModelo), carpeta: (carp[0] && carp[0].carpeta_raiz_id) || '', existeFila: carp.length > 0 };
+      if (!st.bdcGenericas) st.bdcGenericas = (await q(sb.from('bdc_mascaras').select('*').is('obra_id', null).eq('activo', true).order('orden'))).map(mascaraModelo);
+    }
+    if (st.bdcSel !== id) return;
+    const tabs = id === BDC_GENERAL ? BDC_TABS_GEN : BDC_TABS_OBRA;
+    const prev = id === BDC_GENERAL ? st.bdcTabGen : st.bdcTabObra;
+    st.bdcEd = { id, orig, w: clonar(orig), tab: tabs[prev] ? prev : Object.keys(tabs)[0], prueba: '' };
+    renderFichaBdc();
+  } catch (e) {
+    console.error('[abrirBdc]', e);
+    $('bdc-ficha').innerHTML = `<div class="ficha-vacia" style="color:var(--err-fg)">No se pudo cargar: ${esc(textoError(e))}</div>`;
+  }
+}
+
+// ── Ficha ──
+function bdcClave(sec, x) { return sec === 'marcas' ? x.marcaInterna : (x.id != null ? 'id' + x.id : 'nuevo:' + x._tmp); }
+function bdcOrigDe(sec, x) { return (st.bdcEd.orig[sec] || []).find(o => bdcClave(sec, o) === bdcClave(sec, x)); }
+function bdcFilaClase(sec, x) {
+  const o = bdcOrigDe(sec, x);
+  if (!o) return 'nuevo';
+  return Object.keys(x).some(k => k !== '_tmp' && String(o[k]) !== String(x[k])) ? 'cambiado' : '';
+}
+function inpBdc(sec, i, k, tipo, extra) {
+  const x = st.bdcEd.w[sec][i], o = bdcOrigDe(sec, x), cls = o && String(o[k]) !== String(x[k]) ? 'cambiado' : '';
+  if (tipo === 'bool') return `<input type="checkbox" class="${cls}" data-bsec="${sec}" data-i="${i}" data-k="${k}" ${x[k] ? 'checked' : ''}>`;
+  return `<input class="inp ${cls}" data-bsec="${sec}" data-i="${i}" data-k="${k}" value="${esc(x[k])}" ${tipo === 'num' ? 'type="number" min="1" max="20"' : ''} ${extra || ''}>`;
+}
+
+function renderFichaBdc() {
+  const ed = st.bdcEd; if (!ed) return;
+  const esGen = ed.id === BDC_GENERAL, ob = esGen ? null : obra(ed.id);
+  const tabs = esGen ? BDC_TABS_GEN : BDC_TABS_OBRA;
+  const titulo = esGen ? 'BDC · General' : `${esc(ob.codigo)} ${esc(ob.nombre_corto)}`;
+  const sub = esGen ? 'Vale para todas las obras. BDC Sync lo toma en la próxima carga; el informe, el domingo.'
+    : 'Configuración de BDC en esta obra. BDC Sync la toma en la próxima carga.';
+  const n = s => s === 'mascaras' ? ed.w.mascaras.length : s === 'marcas' ? ed.w.marcas.length : '';
+  $('bdc-ficha').innerHTML = `
+    <div class="ficha-scroll">
+      <div class="ficha-tit">${titulo} <span class="chip app">BDC</span></div>
+      <div class="ficha-sub">${sub}</div>
+      <div class="card">
+        <div class="tabs" id="bdc-tabs">${Object.entries(tabs).map(([k, t]) => `<button type="button" data-bdctab="${k}" class="${k === ed.tab ? 'activa' : ''}">${t}${n(k) !== '' ? `<span class="cnt">${n(k)}</span>` : ''}</button>`).join('')}</div>
+        <div id="bdc-sec"></div>
+      </div>
+    </div>
+    <div class="barra-guardar">
+      <span class="estado" id="bdc-estado"></span>
+      <button class="btn sec" id="bdc-descartar" type="button">Descartar</button>
+      <button class="btn" id="bdc-guardar" type="button">Guardar cambios</button>
+    </div>`;
+  $('bdc-tabs').querySelectorAll('[data-bdctab]').forEach(b => b.onclick = () => {
+    ed.tab = b.dataset.bdctab;
+    if (esGen) st.bdcTabGen = ed.tab; else st.bdcTabObra = ed.tab;
+    renderFichaBdc();
+  });
+  $('bdc-descartar').onclick = async () => {
+    if (!cambiosBdc().length) return;
+    if (await confirmar('Descartar cambios', [], { intro: '¿Volver a lo guardado?', textoOk: 'Descartar', peligro: true })) abrirBdc(ed.id);
+  };
+  $('bdc-guardar').onclick = guardarBdc;
+  ({ mascaras: renderBdcMascaras, marcas: renderBdcMarcas, informe: renderBdcInforme, carpeta: renderBdcCarpeta })[ed.tab]();
+  actualizarBarraBdc();
+}
+
+function engancharBdc() {
+  const ed = st.bdcEd;
+  $('bdc-sec').querySelectorAll('[data-bsec]').forEach(el => el.oninput = el.onchange = () => {
+    const x = ed.w[el.dataset.bsec][+el.dataset.i], k = el.dataset.k;
+    x[k] = el.type === 'checkbox' ? el.checked : (el.type === 'number' && el.value !== '' ? Number(el.value) : el.value);
+    if (el.type === 'checkbox') renderFichaBdc();
+    else {
+      const o = bdcOrigDe(el.dataset.bsec, x);
+      el.classList.toggle('cambiado', !!o && String(o[k]) !== String(x[k]));
+      actualizarBarraBdc();
+      if (ed.tab === 'mascaras') pintarPruebaMascara();
+    }
+  });
+}
+
+// ── Máscaras ──
+// Misma regla que BDC Sync (= detectarCodigoDocumento_ de BDC v6): primer palabra del nombre del archivo,
+// sin el "27. " inicial; si no matchea, se prueba sin el sufijo de revisión "_A".
+function regexMascara(m) {
+  const sep = String(m.separador || '-').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const bloque = '[A-Z0-9]{' + m.largoMin + ',' + m.largoMax + '}';
+  const rMin = Math.max(0, m.bloquesMin - 1), rMax = Math.max(rMin, m.bloquesMax - 1);
+  return new RegExp('^' + bloque + '(' + sep + bloque + '){' + rMin + ',' + rMax + '}$');
+}
+function detectarCodigo(nombre, mascaras) {
+  const partes = String(nombre || '').replace(/\.pdf$/i, '').replace(/^\s*\d+\.\s*/, '').trim().split(/\s+/).filter(Boolean);
+  if (!partes.length) return null;
+  const tok = partes[0];
+  for (const m of mascaras) { try { if (regexMascara(m).test(tok)) return { codigo: tok, familia: m.nombre }; } catch (e) { /* máscara a medio escribir */ } }
+  const s = tok.match(/^(.*)_([A-Za-z0-9]{1,3})$/);
+  if (s) for (const m of mascaras) { try { if (regexMascara(m).test(s[1])) return { codigo: s[1], familia: m.nombre }; } catch (e) { } }
+  return null;
+}
+function ejemploMascara(m) {
+  const b = Math.max(1, Number(m.bloquesMin) || 1), l = Math.max(1, Number(m.largoMax) || 1);
+  const base = ['GRAL', '100', 'ET', 'B', '006', 'A', 'X', '9'];
+  return Array.from({ length: b }, (_, i) => (base[i] || 'X').padEnd(Math.min(l, Math.max(Number(m.largoMin) || 1, 1)), '0').slice(0, l)).join(m.separador || '-');
+}
+function pintarPruebaMascara() {
+  const ed = st.bdcEd, el = $('bdc-prueba-res'); if (!el) return;
+  const t = $('bdc-prueba').value; ed.prueba = t;
+  if (!t.trim()) { el.innerHTML = ''; return; }
+  const activas = ed.w.mascaras.filter(m => m.activo).slice().sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0));
+  const lista = ed.id === BDC_GENERAL ? activas : activas.concat(st.bdcGenericas || []);
+  const r = detectarCodigo(t, lista);
+  el.innerHTML = r ? `<span class="chip ok">Código ${esc(r.codigo)} · máscara ${esc(r.familia)}</span>` : '<span class="chip">Ninguna máscara reconoce un código en ese nombre</span>';
+}
+function renderBdcMascaras() {
+  const ed = st.bdcEd, w = ed.w.mascaras, esGen = ed.id === BDC_GENERAL;
+  $('bdc-sec').innerHTML = `
+    ${w.length ? `<table class="tabla"><thead><tr><th>Nombre (familia)</th><th>Bloques mín.</th><th>Bloques máx.</th><th>Largo mín.</th><th>Largo máx.</th><th>Separador</th><th>Orden</th><th>Activa</th><th>Ejemplo</th><th></th></tr></thead>
+    <tbody>${w.map((x, i) => `<tr class="${bdcFilaClase('mascaras', x)}">
+      <td>${inpBdc('mascaras', i, 'nombre', 'text', 'maxlength="40"')}</td>
+      <td style="width:84px">${inpBdc('mascaras', i, 'bloquesMin', 'num')}</td><td style="width:84px">${inpBdc('mascaras', i, 'bloquesMax', 'num')}</td>
+      <td style="width:84px">${inpBdc('mascaras', i, 'largoMin', 'num')}</td><td style="width:84px">${inpBdc('mascaras', i, 'largoMax', 'num')}</td>
+      <td style="width:76px">${inpBdc('mascaras', i, 'separador', 'text', 'maxlength="3"')}</td>
+      <td style="width:76px">${inpBdc('mascaras', i, 'orden', 'num')}</td>
+      <td style="width:60px"><label class="check">${inpBdc('mascaras', i, 'activo', 'bool')}</label></td>
+      <td style="font-family:monospace;font-size:.78rem;color:var(--muted)">${esc(ejemploMascara(x))}</td>
+      <td class="acciones">${x.id == null ? `<button class="btn-icono peligro" type="button" data-quitar-m="${i}">Quitar</button>` : ''}</td></tr>`).join('')}</tbody></table>`
+      : `<div class="nota">${esGen ? 'Sin máscaras genéricas.' : 'Esta obra no tiene máscaras propias: usa solo las genéricas.'}</div>`}
+    <div class="agregar-fila"><input class="inp" id="bdc-m-nueva" placeholder="Nombre de la familia (ej. Tecnico_Proyecto)" maxlength="40">
+      <button class="btn sec" id="bdc-m-agregar" type="button">+ Agregar máscara</button></div>
+    <div class="agregar-fila"><input class="inp" id="bdc-prueba" placeholder="Probar con un nombre de archivo (ej. GRAL-100-ET-B-006_0 Tanques.pdf)" style="max-width:480px" value="${esc(ed.prueba || '')}">
+      <span id="bdc-prueba-res"></span></div>
+    <div class="nota">Una máscara reconoce el código al principio del nombre del PDF: <b>bloques</b> de letras mayúsculas y números
+      (de <i>largo mín.</i> a <i>largo máx.</i> caracteres), unidos por el <b>separador</b>. Con el código se arman la familia y las
+      conexiones por referencias. ${esGen ? 'Las genéricas se prueban después de las de cada obra.' : 'Se prueban primero las de la obra (por orden) y después las genéricas.'}
+      Lo ya indexado no cambia: vale para las cargas nuevas.</div>`;
+  engancharBdc();
+  $('bdc-sec').querySelectorAll('[data-quitar-m]').forEach(b => b.onclick = () => { w.splice(+b.dataset.quitarM, 1); renderFichaBdc(); });
+  $('bdc-m-agregar').onclick = () => {
+    const nom = $('bdc-m-nueva').value.trim();
+    if (!nom) return;
+    if (w.find(x => x.nombre.toLowerCase() === nom.toLowerCase())) { toast('Ya hay una máscara con ese nombre.', true); return; }
+    w.push({ id: null, _tmp: uuid(), nombre: nom, bloquesMin: 2, bloquesMax: 8, largoMin: 1, largoMax: 6, separador: '-',
+      orden: w.reduce((m, x) => Math.max(m, Number(x.orden) || 0), 0) + 1, activo: true });
+    renderFichaBdc();
+  };
+  $('bdc-m-nueva').onkeydown = e => { if (e.key === 'Enter') $('bdc-m-agregar').click(); };
+  $('bdc-prueba').oninput = pintarPruebaMascara;
+  pintarPruebaMascara();
+}
+
+// ── Marcas manuales ──
+function renderBdcMarcas() {
+  const ed = st.bdcEd, w = ed.w.marcas;
+  $('bdc-sec').innerHTML = `
+    <table class="tabla"><thead><tr><th>Texto del menú</th><th>Marca (etiqueta)</th><th>Orden</th><th>Activa</th><th></th></tr></thead>
+    <tbody>${w.map((x, i) => `<tr class="${bdcFilaClase('marcas', x)}">
+      <td>${inpBdc('marcas', i, 'etiquetaVisible', 'text', 'maxlength="60"')}</td>
+      <td><b>${esc(x.marcaInterna)}</b> <span class="nota" style="margin:0">→ etiqueta "${esc(String(x.marcaInterna).toLowerCase())}"</span></td>
+      <td style="width:80px">${inpBdc('marcas', i, 'orden', 'num')}</td>
+      <td style="width:60px"><label class="check">${inpBdc('marcas', i, 'activo', 'bool')}</label></td>
+      <td class="acciones">${bdcOrigDe('marcas', x) ? '' : `<button class="btn-icono peligro" type="button" data-quitar-mk="${i}">Quitar</button>`}</td></tr>`).join('')}</tbody></table>
+    <div class="agregar-fila"><input class="inp" id="bdc-mk-texto" placeholder="Texto del menú (ej. Cargar como Memoria)" maxlength="60">
+      <input class="inp" id="bdc-mk-marca" placeholder="Marca (ej. Memoria)" maxlength="40" style="max-width:200px">
+      <button class="btn sec" id="bdc-mk-agregar" type="button">+ Agregar marca</button></div>
+    <div class="nota">Aparecen en "Cargar documentos → Documentos vacíos → Acción". El documento entra al índice sin texto, con la marca como
+      etiqueta. La marca no se cambia una vez creada (queda en las etiquetas de los documentos): una que no se usa más se desactiva.</div>`;
+  engancharBdc();
+  $('bdc-sec').querySelectorAll('[data-quitar-mk]').forEach(b => b.onclick = () => { w.splice(+b.dataset.quitarMk, 1); renderFichaBdc(); });
+  $('bdc-mk-agregar').onclick = () => {
+    const texto = $('bdc-mk-texto').value.trim(), marca = $('bdc-mk-marca').value.trim();
+    if (!texto || !marca) { toast('Completá el texto del menú y la marca.', true); return; }
+    if (!/^[A-Za-z0-9_]{2,40}$/.test(marca)) { toast('La marca va en letras y números, sin espacios (ej. HojaDeDatos).', true); return; }
+    if (w.find(x => x.marcaInterna.toLowerCase() === marca.toLowerCase())) { toast('Esa marca ya existe.', true); return; }
+    w.push({ marcaInterna: marca, etiquetaVisible: texto, orden: w.reduce((m, x) => Math.max(m, Number(x.orden) || 0), 0) + 1, activo: true });
+    renderFichaBdc();
+  };
+}
+
+// ── Informe semanal (goe_app_config) ──
+function renderBdcInforme() {
+  const ed = st.bdcEd, w = ed.w.informe, o = ed.orig.informe;
+  const cmb = k => String(w[k] ?? '') !== String(o[k] ?? '') ? 'cambiado' : '';
+  $('bdc-sec').innerHTML = `
+    <div class="grid">${BDC_INFORME.map(c => `<div class="campo ${c.k === 'CarpetaExportAgente' ? 'c2' : ''}"><label>${c.t}</label>
+      <input class="inp ${cmb(c.k)}" data-inf="${c.k}" value="${esc(w[c.k])}" ${c.k === 'TopeDetalleExport' ? 'type="number" min="1"' : ''}>
+      <div class="nota" style="margin-top:2px">${esc(c.ayuda)}</div></div>`).join('')}</div>
+    ${w.CarpetaExportAgente && idDriveDe(w.CarpetaExportAgente) ? `<div class="nota"><a href="https://drive.google.com/drive/folders/${esc(idDriveDe(w.CarpetaExportAgente))}" target="_blank" rel="noopener">Abrir la carpeta en Drive ↗</a></div>` : ''}`;
+  $('bdc-sec').querySelectorAll('[data-inf]').forEach(el => el.oninput = () => { w[el.dataset.inf] = el.value; el.classList.toggle('cambiado', !!cmb(el.dataset.inf)); actualizarBarraBdc(); });
+}
+
+// ── Carpeta raíz de la obra ──
+function renderBdcCarpeta() {
+  const ed = st.bdcEd, w = ed.w, o = ed.orig, id = idDriveDe(w.carpeta);
+  $('bdc-sec').innerHTML = `
+    <div class="grid"><div class="campo c4"><label>Carpeta raíz de la obra en Drive</label>
+      <input class="inp ${String(w.carpeta) !== String(o.carpeta) ? 'cambiado' : ''}" id="bdc-carpeta" value="${esc(w.carpeta)}" placeholder="Pegá el link de la carpeta (drive.google.com/drive/folders/…) o su ID">
+      <div class="nota" style="margin-top:2px">${id ? `ID: <b>${esc(id)}</b> · <a href="https://drive.google.com/drive/folders/${esc(id)}" target="_blank" rel="noopener">abrir en Drive ↗</a>`
+        : (w.carpeta ? '<span style="color:var(--err-fg)">No se reconoce un link ni un ID de carpeta de Drive.</span>' : 'Sin carpeta: en BDC la pantalla de Carga avisa que falta.')}</div></div></div>
+    <div class="nota">Es la carpeta donde están (o van a estar) los PDF de la obra. En "Cargar documentos" solo se puede navegar e indexar
+      dentro de ella. Tiene que ser de la cuenta goecdg (dueña de BDC Sync) o estar compartida con ella.
+      Si se cambia, lo ya indexado queda como está; las cargas nuevas arman la carpeta de cada documento desde la nueva raíz.</div>`;
+  $('bdc-carpeta').oninput = () => { w.carpeta = $('bdc-carpeta').value.trim(); actualizarBarraBdc(); };
+  $('bdc-carpeta').onchange = () => renderFichaBdc();
+}
+
+// ── Cambios, validación y guardado ──
+function cambiosBdc() {
+  const ed = st.bdcEd; if (!ed) return [];
+  const out = [], w = ed.w, o = ed.orig;
+  w.mascaras.forEach(x => {
+    const a = bdcOrigDe('mascaras', x);
+    if (!a) { out.push({ tipo: 'mas', html: `<b>Máscara:</b> se agrega ${esc(x.nombre)} (${x.bloquesMin} a ${x.bloquesMax} bloques de ${x.largoMin} a ${x.largoMax}, separador "${esc(x.separador)}")` }); return; }
+    Object.keys(BDC_MASC_CAMPOS).forEach(k => {
+      if (String(a[k]) === String(x[k])) return;
+      const desact = k === 'activo' && !x[k];
+      out.push({ tipo: desact ? 'menos' : 'cambio', html: `<b>Máscara ${esc(a.nombre)}:</b> ${BDC_MASC_CAMPOS[k]} ${esc(txtV(a[k]))} → <b>${esc(txtV(x[k]))}</b>`,
+        aviso: desact ? 'Deja de usarse en las cargas nuevas; lo ya indexado no cambia.' : '' });
+    });
+  });
+  if (w.marcas) w.marcas.forEach(x => {
+    const a = bdcOrigDe('marcas', x);
+    if (!a) { out.push({ tipo: 'mas', html: `<b>Marca:</b> se agrega "${esc(x.etiquetaVisible)}" → ${esc(x.marcaInterna)}` }); return; }
+    [['etiquetaVisible', 'texto del menú'], ['orden', 'orden'], ['activo', 'activa']].forEach(([k, t]) => {
+      if (String(a[k]) === String(x[k])) return;
+      const desact = k === 'activo' && !x[k];
+      out.push({ tipo: desact ? 'menos' : 'cambio', html: `<b>Marca ${esc(a.marcaInterna)}:</b> ${t} ${esc(txtV(a[k]))} → <b>${esc(txtV(x[k]))}</b>`,
+        aviso: desact ? 'Sale del menú "Acción"; los documentos ya marcados conservan su etiqueta.' : '' });
+    });
+  });
+  if (w.informe) BDC_INFORME.forEach(c => {
+    const a = o.informe[c.k] ?? '', b = w.informe[c.k] ?? '';
+    if (String(a).trim() !== String(b).trim()) out.push({ tipo: 'cambio', html: `<b>${c.t}:</b> ${esc(txtV(a))} → <b>${esc(txtV(b))}</b>` });
+  });
+  if (w.carpeta !== undefined && String(w.carpeta) !== String(o.carpeta)) {
+    out.push({ tipo: 'cambio', html: `<b>Carpeta raíz:</b> ${esc(txtV(o.carpeta))} → <b>${esc(txtV(idDriveDe(w.carpeta) || w.carpeta))}</b>`,
+      aviso: o.carpeta ? 'Lo ya indexado queda como está; las cargas nuevas usan la carpeta nueva.' : '' });
+  }
+  return out;
+}
+function actualizarBarraBdc() {
+  const n = cambiosBdc().length, el = $('bdc-estado'); if (!el) return;
+  el.textContent = n ? `${n} cambio${n > 1 ? 's' : ''} sin guardar` : 'Sin cambios';
+  el.className = 'estado' + (n ? ' sucio' : '');
+  $('bdc-guardar').disabled = !n; $('bdc-descartar').disabled = !n;
+}
+function validarBdc() {
+  const w = st.bdcEd.w;
+  const nombres = {};
+  for (const m of w.mascaras) {
+    if (vacio(m.nombre)) return 'Hay una máscara sin nombre.';
+    const k = m.nombre.trim().toLowerCase();
+    if (nombres[k]) return `Máscara "${m.nombre}": el nombre está repetido.`;
+    nombres[k] = true;
+    for (const c of ['bloquesMin', 'bloquesMax', 'largoMin', 'largoMax']) {
+      if (!(Number.isInteger(Number(m[c])) && Number(m[c]) >= 1 && Number(m[c]) <= 20)) return `Máscara "${m.nombre}": ${BDC_MASC_CAMPOS[c]} va de 1 a 20.`;
+    }
+    if (Number(m.bloquesMin) > Number(m.bloquesMax)) return `Máscara "${m.nombre}": bloques mín. no puede ser mayor que bloques máx.`;
+    if (Number(m.largoMin) > Number(m.largoMax)) return `Máscara "${m.nombre}": largo mín. no puede ser mayor que largo máx.`;
+    if (!(String(m.separador).length >= 1 && String(m.separador).length <= 3)) return `Máscara "${m.nombre}": el separador tiene de 1 a 3 caracteres.`;
+    if (!Number.isInteger(Number(m.orden))) return `Máscara "${m.nombre}": el orden es un número.`;
+  }
+  if (w.marcas) for (const m of w.marcas) {
+    if (vacio(m.etiquetaVisible)) return `Marca ${m.marcaInterna}: falta el texto del menú.`;
+    if (!Number.isInteger(Number(m.orden))) return `Marca ${m.marcaInterna}: el orden es un número.`;
+  }
+  if (w.informe) {
+    if (vacio(w.informe.CarpetaExportAgente) || !idDriveDe(w.informe.CarpetaExportAgente)) return 'Carpeta del informe: pegá el link o el ID de una carpeta de Drive.';
+    const t = Number(w.informe.TopeDetalleExport);
+    if (!(Number.isInteger(t) && t >= 1 && t <= 5000)) return 'Tope del detalle: un número entero de 1 a 5000.';
+  }
+  if (w.carpeta !== undefined && !vacio(w.carpeta) && !idDriveDe(w.carpeta)) return 'Carpeta raíz: no se reconoce un link ni un ID de carpeta de Drive.';
+  return '';
+}
+async function guardarBdc() {
+  const ed = st.bdcEd, cambios = cambiosBdc();
+  if (!cambios.length) return;
+  const err = validarBdc(); if (err) { avisar('No se puede guardar', esc(err)); return; }
+  const esGen = ed.id === BDC_GENERAL, id = ed.id;
+  const ok = await confirmar(esGen ? 'Guardar la configuración general de BDC' : `Guardar la configuración de BDC · ${esc(etiqObra(obra(id)))}`, cambios, { textoOk: 'Guardar' });
+  if (!ok) return;
+  const btn = $('bdc-guardar'); btn.disabled = true; btn.textContent = 'Guardando…';
+  const w = ed.w;
+  const fila = m => ({ obra_id: esGen ? null : id, nombre: m.nombre.trim(), bloques_min: Number(m.bloquesMin), bloques_max: Number(m.bloquesMax),
+    largo_min: Number(m.largoMin), largo_max: Number(m.largoMax), separador: String(m.separador), orden: Number(m.orden), activo: !!m.activo });
+  try {
+    for (const m of w.mascaras) {
+      const a = bdcOrigDe('mascaras', m);
+      if (!a) await q(sb.from('bdc_mascaras').insert(fila(m)));
+      else if (Object.keys(BDC_MASC_CAMPOS).some(k => String(a[k]) !== String(m[k]))) await q(sb.from('bdc_mascaras').update(fila(m)).eq('id', m.id));
+    }
+    if (w.marcas) {
+      const mk = w.marcas.filter(m => { const a = bdcOrigDe('marcas', m); return !a || ['etiquetaVisible', 'orden', 'activo'].some(k => String(a[k]) !== String(m[k])); })
+        .map(m => ({ marca_interna: m.marcaInterna, etiqueta_visible: m.etiquetaVisible.trim(), orden: Number(m.orden), activo: !!m.activo }));
+      if (mk.length) await q(sb.from('bdc_marcas').upsert(mk, { onConflict: 'marca_interna' }));
+    }
+    if (w.informe) {
+      const cfg = BDC_INFORME.filter(c => String(w.informe[c.k] ?? '').trim() !== String(ed.orig.informe[c.k] ?? '').trim())
+        .map(c => ({ app: 'bdc', clave: c.k, valor: c.k === 'CarpetaExportAgente' ? idDriveDe(w.informe[c.k]) : String(Number(w.informe[c.k])) }));
+      if (cfg.length) await q(sb.from('goe_app_config').upsert(cfg, { onConflict: 'app,clave' }));
+    }
+    if (w.carpeta !== undefined && String(w.carpeta) !== String(ed.orig.carpeta)) {
+      await q(sb.from('bdc_obras').upsert({ obra_id: id, carpeta_raiz_id: vacio(w.carpeta) ? '' : idDriveDe(w.carpeta) }, { onConflict: 'obra_id' }));
+    }
+    if (esGen) st.bdcGenericas = null;
+    st.bdcEd = null;
+    await abrirBdc(id);
+    toast('Configuración de BDC guardada');
+  } catch (e) {
+    console.error('[guardarBdc]', e);
+    btn.disabled = false; btn.textContent = 'Guardar cambios';
+    await avisar('No se pudo guardar', esc(textoError(e)) + '<div class="nota">Si una parte llegó a guardarse, la ficha se recarga con lo que quedó en la base.</div>');
+    st.bdcEd = null; abrirBdc(id);
   }
 }
 
