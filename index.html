@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GOE Admin</title>
 <!--
-  index_admin_v1_2.html — GOE Admin v1.2 (13-oct-2026)
+  index_admin_v1_3.html — GOE Admin v1.3 (14-oct-2026)
   Repo: goeapp/admin → https://goeapp.github.io/admin/ (subir como index.html)
 
   Administración del stack sobre Supabase (proyecto PWAgoe), solo para el admin global.
@@ -14,13 +14,16 @@
   · MdT:      usuarios y listas (etiquetas, marcas, tareas, herramientas, config)
   · LO:       plantilla + configuración por obra (tipos, etiquetas, PdC, avisos y calendario)
   · BDC:      general (máscaras genéricas, marcas manuales, informe semanal) + por obra (carpeta de Drive, máscaras)
+  · PreKOM:   árbol de Contenido de cada obra (punto, nivel, título; ocultar / restaurar) + copiar estructura desde otra obra
+  · Mail:     nombre de cada app en el mail del código (goe_apps.nombre_mail) + generador de la plantilla v2.0
   · Login por código (Supabase Auth), igual que MdT v15.0, con sesión propia (admin-sb-auth).
   · Todos los cambios se guardan con botón y un resumen para confirmar.
   · Solo computadora (sin service worker).
 
   Requiere en Supabase: goe_esquema_v1_0.sql + goe_datos_v1_0.sql + goe_admin_v1_0.sql
                         + lo_esquema_v8_0_0.sql (tablas lo_ y lo_plantilla)
-                        + bdc_esquema_v7_0_0.sql (tablas bdc_).
+                        + bdc_esquema_v7_0_0.sql (tablas bdc_)
+                        + pk_esquema_v9_0_0.sql + pk_datos_v9_0_0.sql (tablas pk_, goe_apps.nombre_mail).
 
   Changelog
   v1.0 — primera versión.
@@ -28,6 +31,10 @@
          Login con emailRedirectTo → el mail del código dice "GOE ADMIN".
   v1.2 — pestaña BDC: General (máscaras genéricas, marcas manuales, informe semanal del agente)
          + obras con BDC (carpeta raíz de Drive, máscaras de la obra). Prueba de máscaras en vivo.
+  v1.3 — pestaña PreKOM: árbol de Contenido por obra (alta, renombre, nivel, título; borrar = ocultar,
+         con Ocultos → Restaurar) y "Copiar estructura" desde otra obra (solo puntos, niveles y títulos).
+         Pestaña Mail: url + nombre_mail de cada app y "Generar plantilla" (mail del código v2.0:
+         asunto fijo "{{ .Token }} es tu código de acceso", nombre de la PWA solo en el cuerpo).
 -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
@@ -207,6 +214,15 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
 .modal .campo.c2 { grid-column: span 2; }
 .modal .err { color: var(--err-fg); background: var(--err-bg); border-radius: 6px; padding: 6px 10px; margin-top: 10px; font-size: .78rem; }
 
+/* ── PreKOM / Mail (v1.3) ──────────────────────────────── */
+.pk-punto { font-family: monospace; }
+.tabla tr.oculto-pend td { background: #fef2f2; color: var(--muted); }
+.tabla tr.oculto-pend td.acciones { color: var(--text); }
+.tabla tr.restaurar td { background: #f0fdf4; }
+.mail-txt { width: 100%; font-family: monospace; font-size: .74rem; min-height: 120px; }
+.mail-prev { width: 100%; height: 430px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #f1f5f9; }
+.pasos { margin: 6px 0 0 18px; display: flex; flex-direction: column; gap: 3px; font-size: .82rem; }
+
 /* ── TOAST / CARGA ─────────────────────────────────────── */
 #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--accent2); color: #fff; padding: 10px 18px; border-radius: var(--radius-sm); font-size: .82rem; opacity: 0; pointer-events: none; transition: all .25s; z-index: 60; box-shadow: var(--shadow-md); }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -264,6 +280,8 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
       <button type="button" data-vista="mdt">MdT</button>
       <button type="button" data-vista="lo">LO</button>
       <button type="button" data-vista="bdc">BDC</button>
+      <button type="button" data-vista="pk">PreKOM</button>
+      <button type="button" data-vista="mail">Mail</button>
     </nav>
     <span class="hdr-sep"></span>
     <span class="hdr-user" id="hdr-user"></span>
@@ -338,6 +356,22 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
     </aside>
     <div class="col-ficha" id="bdc-ficha"><div class="ficha-vacia">Elegí General o una obra de la lista.</div></div>
   </section>
+
+  <!-- PreKOM (v1.3) -->
+  <section class="vista" id="vista-pk">
+    <aside class="col-lista">
+      <div class="lista-top">
+        <div class="nota" style="margin:0">Árbol de Contenido de cada obra con PreKOM tildado. El Resumen y el color se editan en PreKOM.</div>
+      </div>
+      <div class="lista-items" id="pk-lista"></div>
+    </aside>
+    <div class="col-ficha" id="pk-ficha"><div class="ficha-vacia">Elegí una obra de la lista.</div></div>
+  </section>
+
+  <!-- Mail del código (v1.3) -->
+  <section class="vista" id="vista-mail">
+    <div class="col-ficha" id="mail-ficha"><div class="ficha-vacia">Cargando…</div></div>
+  </section>
 </div>
 
 <!-- MODAL GENÉRICO -->
@@ -356,7 +390,7 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
 /* ════════════════════════════════════════════════════════
    CONFIGURACIÓN
 ════════════════════════════════════════════════════════ */
-const VERSION_UI     = 'v1.2';
+const VERSION_UI     = 'v1.3';
 const REDIRECT_MAIL  = 'https://goeapp.github.io/admin/';   // la plantilla del mail lo usa para poner "GOE ADMIN"
 const SUPABASE_URL   = 'https://uhuftsxrzwhmvzygcuvp.supabase.co';
 const SUPABASE_KEY   = 'sb_publishable_TCibRAnzgaDIbn_MIirw6w_FltKG8X3';
@@ -407,6 +441,8 @@ const st = {
   loSel: null, loEd: null, loTabPrev: 'tipos',  // loEd = { id, orig, w, tab, pdcTipo } (id = uuid de obra o 'plantilla')
   bdcSel: null, bdcEd: null, bdcTabGen: 'mascaras', bdcTabObra: 'carpeta',  // v1.2 — bdcEd = { id, orig, w, tab, prueba } (id = uuid de obra o 'general')
   bdcCarpetas: null, bdcGenericas: null,
+  pkSel: null, pkEd: null, pkTab: 'arbol',   // v1.3 — pkEd = { id, orig, w, tab, copiarDesde, origenNodos }
+  mailEd: null,                              // v1.3 — mailEd = { orig, w, plantilla }
 };
 let emailPendiente = '';
 
@@ -439,6 +475,9 @@ function textoError(err) {
   if (/mdt_usuarios_pkey/.test(m)) return 'Ese mail ya es usuario de MdT.';
   if (/JWT|session|token/i.test(m)) return 'La sesión venció. Volvé a ingresar.';
   if (/Failed to fetch|NetworkError|network/i.test(m)) return 'Sin conexión con la base.';
+  if (/pk_contenido_punto_visible/.test(m)) return 'Ya hay un nodo visible con ese punto en la obra.';
+  if (/pk_contenido_punto_check/.test(m)) return 'El punto va con números o letras separados por puntos (ej. 8.5.1).';
+  if (/goe_apps_nombre_mail_chk/.test(m)) return 'El nombre del mail va en MAYÚSCULAS, de 2 a 30 caracteres, sin comillas ni llaves.';
   if (/row-level security|permission denied|42501/i.test(m)) return 'Sin permiso para esa operación.';
   return m;
 }
@@ -579,7 +618,8 @@ async function cargarDatos() {
    NAVEGACIÓN (con aviso de cambios sin guardar)
 ════════════════════════════════════════════════════════ */
 function haySinGuardar() {
-  return (st.obraEd && cambiosObra().length > 0) || (st.personaEd && cambiosPersona().length > 0) || !!st.mdtOrden || (st.loEd && cambiosLo().length > 0) || (st.bdcEd && cambiosBdc().length > 0);
+  return (st.obraEd && cambiosObra().length > 0) || (st.personaEd && cambiosPersona().length > 0) || !!st.mdtOrden || (st.loEd && cambiosLo().length > 0) || (st.bdcEd && cambiosBdc().length > 0)
+    || (st.pkEd && cambiosPk().length > 0) || (st.mailEd && cambiosMail().length > 0);
 }
 async function puedoSalir() {
   if (!haySinGuardar()) return true;
@@ -588,7 +628,7 @@ async function puedoSalir() {
 async function irVista(v) {
   if (v === st.vista && st.appIniciada) return;
   if (!(await puedoSalir())) return;
-  st.obraEd = null; st.personaEd = null; st.mdtOrden = null; st.loEd = null; st.bdcEd = null;
+  st.obraEd = null; st.personaEd = null; st.mdtOrden = null; st.loEd = null; st.bdcEd = null; st.pkEd = null; st.mailEd = null;
   st.vista = v;
   document.querySelectorAll('.hdr-nav button').forEach(b => b.classList.toggle('activa', b.dataset.vista === v));
   document.querySelectorAll('.vista').forEach(s => s.classList.toggle('activa', s.id === 'vista-' + v));
@@ -597,6 +637,8 @@ async function irVista(v) {
   if (v === 'mdt') renderMdt();
   if (v === 'lo') { renderListaLo(); abrirLo(st.loSel || PLANTILLA); }
   if (v === 'bdc') { renderListaBdc(); abrirBdc(st.bdcSel || BDC_GENERAL); }
+  if (v === 'pk') { renderListaPk(); st.pkSel ? abrirPk(st.pkSel) : (obrasPk()[0] ? abrirPk(obrasPk()[0].obra_id) : vaciarFicha('pk-ficha', 'Ninguna obra tiene PreKOM tildado.')); }
+  if (v === 'mail') abrirMail();
 }
 function vaciarFicha(id, txt) { $(id).innerHTML = `<div class="ficha-vacia">${esc(txt)}</div>`; }
 
@@ -2132,6 +2174,573 @@ async function guardarBdc() {
     btn.disabled = false; btn.textContent = 'Guardar cambios';
     await avisar('No se pudo guardar', esc(textoError(e)) + '<div class="nota">Si una parte llegó a guardarse, la ficha se recarga con lo que quedó en la base.</div>');
     st.bdcEd = null; abrirBdc(id);
+  }
+}
+
+/* ════════════════════════════════════════════════════════
+   PreKOM (v1.3) — árbol de Contenido por obra
+   · Alta, renombre, nivel y título de los nodos. El Resumen y el color
+     se editan en PreKOM (perfil editar).
+   · Borrar = OCULTAR: el nodo sale de PreKOM con su Resumen y sus
+     comentarios guardados; se restaura desde la pestaña Ocultos.
+   · El punto es único entre los visibles. Los comentarios apuntan al
+     nodo, así que renombrar un punto no los pierde.
+   · Copiar estructura: solo puntos, niveles y títulos, sin pisar nada.
+════════════════════════════════════════════════════════ */
+const PK_TABS = { arbol: 'Árbol', ocultos: 'Ocultos', copiar: 'Copiar estructura' };
+const PK_RE_PUNTO = /^[0-9A-Za-z]+(\.[0-9A-Za-z]+)*$/;
+
+function obrasPk() {
+  return D.obraApps.filter(a => a.app === 'pk').map(a => ({ ...a, ob: obra(a.obra_id) })).filter(a => a.ob)
+    .sort((a, b) => a.ob.codigo.localeCompare(b.ob.codigo));
+}
+// Mismo orden que PreKOM y la base (pk_clave_orden): números como números, letras después
+function compararPunto(a, b) {
+  const pa = String(a).split('.'), pb = String(b).split('.');
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    if (pa[i] === undefined) return -1;
+    if (pb[i] === undefined) return 1;
+    const na = /^\d+$/.test(pa[i]), nb = /^\d+$/.test(pb[i]);
+    if (na && nb) { const d = Number(pa[i]) - Number(pb[i]); if (d) return d; continue; }
+    if (na !== nb) return na ? -1 : 1;
+    const c = pa[i].toLowerCase().localeCompare(pb[i].toLowerCase()); if (c) return c;
+  }
+  return 0;
+}
+function nivelDePunto(p) { return Math.min(10, String(p || '').split('.').filter(Boolean).length || 1); }
+
+function renderListaPk() {
+  const sel = st.pkSel;
+  $('pk-lista').innerHTML = obrasPk().map(a => `<div class="item ${sel === a.obra_id ? 'sel' : ''}" data-pk="${a.obra_id}">
+      <div class="item-tit">${esc(a.ob.codigo)} ${esc(a.ob.nombre_corto)} ${a.activa ? '' : '<span class="chip">inactiva en PreKOM</span>'}</div>
+      <div class="item-sub">${esc([a.ob.nombre, a.ob.cliente].filter(x => !vacio(x)).join(' · ') || '—')}</div></div>`).join('')
+    || '<div class="lista-vacia">Ninguna obra tiene PreKOM tildado todavía (se tilda en Obras → Apps).</div>';
+  $('pk-lista').querySelectorAll('[data-pk]').forEach(el => el.onclick = () => seleccionarPk(el.dataset.pk));
+}
+async function seleccionarPk(id) {
+  if (st.pkEd && st.pkSel === id) return;
+  if (!(await puedoSalir())) return;
+  abrirPk(id);
+}
+async function abrirPk(id) {
+  st.pkSel = id; st.pkEd = null;
+  renderListaPk();
+  $('pk-ficha').innerHTML = '<div class="cargando"><div class="spinner"></div>Cargando…</div>';
+  try {
+    const [nodos, coms] = await Promise.all([
+      q(sb.from('pk_contenido').select('id, punto, nivel, titulo, oculto, resumen, color_fondo').eq('obra_id', id)),
+      q(sb.from('pk_comentarios_contenido').select('contenido_id').eq('obra_id', id).eq('oculto', false)),
+    ]);
+    if (st.pkSel !== id) return;
+    const nCom = {};
+    coms.forEach(c => { nCom[c.contenido_id] = (nCom[c.contenido_id] || 0) + 1; });
+    const arbol = nodos.map(n => ({ id: n.id, punto: n.punto, nivel: n.nivel, titulo: n.titulo, oculto: !!n.oculto,
+      tieneResumen: !vacio(String(n.resumen || '').replace(/<[^>]*>/g, '')), color: n.color_fondo || '', nCom: nCom[n.id] || 0 }))
+      .sort((a, b) => compararPunto(a.punto, b.punto) || a.id - b.id);
+    const orig = { arbol };
+    st.pkEd = { id, orig, w: clonar(orig), tab: PK_TABS[st.pkTab] ? st.pkTab : 'arbol', copiarDesde: '', origenNodos: null };
+    renderFichaPk();
+  } catch (e) {
+    console.error('[abrirPk]', e);
+    $('pk-ficha').innerHTML = `<div class="ficha-vacia" style="color:var(--err-fg)">No se pudo cargar: ${esc(textoError(e))}</div>`;
+  }
+}
+
+function pkClave(x) { return x.id != null ? 'id' + x.id : 'nuevo:' + x._tmp; }
+function pkOrigDe(x) { return st.pkEd.orig.arbol.find(o => pkClave(o) === pkClave(x)); }
+function pkFilaClase(x) {
+  const o = pkOrigDe(x);
+  if (!o) return 'nuevo';
+  if (o.oculto && !x.oculto) return 'restaurar';
+  if (!o.oculto && x.oculto) return 'oculto-pend';
+  return ['punto', 'nivel', 'titulo'].some(k => String(o[k]) !== String(x[k])) ? 'cambiado' : '';
+}
+function inpPk(i, k, tipo, extra) {
+  const x = st.pkEd.w.arbol[i], o = pkOrigDe(x), cls = o && String(o[k]) !== String(x[k]) ? 'cambiado' : '';
+  return `<input class="inp ${cls} ${k === 'punto' ? 'pk-punto' : ''}" data-pki="${i}" data-k="${k}" value="${esc(x[k])}" ${tipo === 'num' ? 'type="number" min="1" max="10"' : ''} ${extra || ''}>`;
+}
+function infoNodo(x) {
+  const p = [];
+  if (x.tieneResumen) p.push('<span class="chip ok">con Resumen</span>');
+  if (x.nCom) p.push(`<span class="chip">${x.nCom} comentario${x.nCom > 1 ? 's' : ''}</span>`);
+  if (x.color) p.push(`<span class="chip" style="background:${esc(x.color)};color:#334155" title="Color de fondo">color</span>`);
+  return p.join(' ') || '<span class="nota" style="margin:0">—</span>';
+}
+
+function renderFichaPk() {
+  const ed = st.pkEd; if (!ed) return;
+  const ob = obra(ed.id);
+  const visibles = ed.w.arbol.filter(x => !x.oculto).length;
+  const ocultos = ed.w.arbol.filter(x => x.id != null && pkOrigDe(x) && pkOrigDe(x).oculto).length;
+  const n = { arbol: visibles, ocultos, copiar: '' };
+  $('pk-ficha').innerHTML = `
+    <div class="ficha-scroll">
+      <div class="ficha-tit">${esc(ob.codigo)} ${esc(ob.nombre_corto)} <span class="chip app">PreKOM</span></div>
+      <div class="ficha-sub">Árbol de Contenido de la obra. PreKOM lo muestra ordenado por punto (8.2 antes que 8.10). Lo que guardes acá se ve la próxima vez que se abra la obra.</div>
+      <div class="card">
+        <div class="tabs" id="pk-tabs">${Object.entries(PK_TABS).map(([k, t]) => `<button type="button" data-pktab="${k}" class="${k === ed.tab ? 'activa' : ''}">${t}${n[k] !== '' ? `<span class="cnt">${n[k]}</span>` : ''}</button>`).join('')}</div>
+        <div id="pk-sec"></div>
+      </div>
+    </div>
+    <div class="barra-guardar">
+      <span class="estado" id="pk-estado"></span>
+      <button class="btn sec" id="pk-descartar" type="button">Descartar</button>
+      <button class="btn" id="pk-guardar" type="button">Guardar cambios</button>
+    </div>`;
+  $('pk-tabs').querySelectorAll('[data-pktab]').forEach(b => b.onclick = () => { ed.tab = b.dataset.pktab; st.pkTab = ed.tab; renderFichaPk(); });
+  $('pk-descartar').onclick = async () => {
+    if (!cambiosPk().length) return;
+    if (await confirmar('Descartar cambios', [], { intro: '¿Volver a lo guardado?', textoOk: 'Descartar', peligro: true })) abrirPk(ed.id);
+  };
+  $('pk-guardar').onclick = guardarPk;
+  ({ arbol: renderPkArbol, ocultos: renderPkOcultos, copiar: renderPkCopiar })[ed.tab]();
+  actualizarBarraPk();
+}
+
+function renderPkArbol() {
+  const ed = st.pkEd, w = ed.w.arbol;
+  const filas = w.map((x, i) => ({ x, i })).filter(({ x }) => !x.oculto || (pkOrigDe(x) && !pkOrigDe(x).oculto));
+  $('pk-sec').innerHTML = `
+    ${filas.length ? `<table class="tabla"><thead><tr><th style="width:120px">Punto</th><th style="width:80px">Nivel</th><th>Título</th><th>Contenido</th><th></th></tr></thead>
+    <tbody>${filas.map(({ x, i }) => {
+      const pend = x.oculto;
+      return `<tr class="${pkFilaClase(x)}">
+      <td>${pend ? `<span class="pk-punto">${esc(x.punto)}</span>` : inpPk(i, 'punto', 'text', 'maxlength="30"')}</td>
+      <td>${pend ? esc(x.nivel) : inpPk(i, 'nivel', 'num')}</td>
+      <td>${pend ? esc(x.titulo) : inpPk(i, 'titulo', 'text', 'maxlength="200"')}</td>
+      <td>${infoNodo(x)}</td>
+      <td class="acciones">${x.id == null ? `<button class="btn-icono peligro" type="button" data-quitar-pk="${i}">Quitar</button>`
+        : pend ? `<button class="btn-icono" type="button" data-deshacer-pk="${i}">No ocultar</button>`
+        : `<button class="btn-icono peligro" type="button" data-ocultar-pk="${i}" title="Sale de PreKOM; se restaura desde Ocultos">Ocultar</button>`}</td></tr>`; }).join('')}</tbody></table>`
+      : '<div class="nota">El árbol de esta obra está vacío. Agregá nodos acá o copiá la estructura de otra obra (pestaña Copiar estructura).</div>'}
+    <div class="agregar-fila">
+      <input class="inp pk-punto" id="pk-n-punto" placeholder="Punto (ej. 8.5.1)" maxlength="30" style="max-width:140px">
+      <input class="inp" id="pk-n-titulo" placeholder="Título" maxlength="200">
+      <button class="btn sec" id="pk-n-agregar" type="button">+ Agregar nodo</button>
+    </div>
+    <div class="nota">El nivel se completa solo según el punto (8 → 1, 8.5 → 2, 8.5.1 → 3) y se puede cambiar.
+      <b>Ocultar</b> no borra: el nodo deja de verse en PreKOM con su Resumen y sus comentarios guardados, y se restaura desde <b>Ocultos</b>.
+      Cambiar el punto de un nodo conserva su Resumen y sus comentarios.</div>`;
+  $('pk-sec').querySelectorAll('[data-pki]').forEach(el => el.oninput = () => {
+    const x = w[+el.dataset.pki], k = el.dataset.k;
+    x[k] = k === 'nivel' ? (el.value === '' ? '' : Number(el.value)) : el.value;
+    const o = pkOrigDe(x);
+    el.classList.toggle('cambiado', !!o && String(o[k]) !== String(x[k]));
+    el.closest('tr').className = pkFilaClase(x);
+    actualizarBarraPk();
+  });
+  $('pk-sec').querySelectorAll('[data-quitar-pk]').forEach(b => b.onclick = () => { w.splice(+b.dataset.quitarPk, 1); renderFichaPk(); });
+  $('pk-sec').querySelectorAll('[data-ocultar-pk]').forEach(b => b.onclick = () => { w[+b.dataset.ocultarPk].oculto = true; renderFichaPk(); });
+  $('pk-sec').querySelectorAll('[data-deshacer-pk]').forEach(b => b.onclick = () => { w[+b.dataset.deshacerPk].oculto = false; renderFichaPk(); });
+  const agregar = async () => {
+    const punto = $('pk-n-punto').value.trim(), titulo = $('pk-n-titulo').value.trim();
+    if (!punto) { toast('Escribí el punto (ej. 8.5.1).', true); return; }
+    if (!PK_RE_PUNTO.test(punto)) { toast('El punto va con números o letras separados por puntos (ej. 8.5.1).', true); return; }
+    if (!titulo) { toast('Escribí el título del nodo.', true); return; }
+    if (w.find(x => !x.oculto && x.punto.trim() === punto)) { toast(`Ya hay un nodo visible con el punto ${punto}.`, true); return; }
+    const oculto = w.find(x => x.oculto && x.id != null && pkOrigDe(x) && pkOrigDe(x).oculto && x.punto === punto);
+    if (oculto) {
+      const r = await abrirModal({ titulo: `El ${esc(punto)} está oculto`,
+        html: `<div>Ya existe el punto <b>${esc(punto)}</b> (“${esc(oculto.titulo)}”), oculto. ${oculto.tieneResumen || oculto.nCom ? 'Tiene ' + [oculto.tieneResumen ? 'Resumen' : '', oculto.nCom ? oculto.nCom + ' comentario(s)' : ''].filter(Boolean).join(' y ') + '.' : ''}</div>
+               <div class="nota">Restaurarlo lo vuelve a mostrar tal cual estaba. Para no tener dos "${esc(punto)}", no se crea uno nuevo.</div>`,
+        botones: [{ texto: 'Cancelar', clase: 'sec', valor: false }, { texto: 'Restaurar', valor: true }] });
+      if (r) { oculto.oculto = false; renderFichaPk(); toast(`El ${punto} vuelve al árbol al guardar.`); }
+      return;
+    }
+    w.push({ id: null, _tmp: uuid(), punto, nivel: nivelDePunto(punto), titulo, oculto: false, tieneResumen: false, color: '', nCom: 0 });
+    w.sort((a, b) => compararPunto(a.punto, b.punto) || (a.id || 1e12) - (b.id || 1e12));
+    renderFichaPk();
+    setTimeout(() => { const el = $('pk-n-punto'); if (el) el.focus(); }, 0);
+  };
+  $('pk-n-agregar').onclick = agregar;
+  $('pk-n-punto').onkeydown = $('pk-n-titulo').onkeydown = e => { if (e.key === 'Enter') agregar(); };
+}
+
+function renderPkOcultos() {
+  const ed = st.pkEd, w = ed.w.arbol;
+  const filas = w.map((x, i) => ({ x, i })).filter(({ x }) => x.id != null && pkOrigDe(x) && pkOrigDe(x).oculto)
+    .sort((a, b) => compararPunto(a.x.punto, b.x.punto));
+  $('pk-sec').innerHTML = filas.length ? `<table class="tabla"><thead><tr><th style="width:120px">Punto</th><th style="width:70px">Nivel</th><th>Título</th><th>Contenido guardado</th><th></th></tr></thead>
+    <tbody>${filas.map(({ x, i }) => {
+      const choca = !x.oculto ? false : w.some(y => y !== x && !y.oculto && y.punto.trim() === x.punto);
+      return `<tr class="${pkFilaClase(x)}"><td class="pk-punto">${esc(x.punto)}</td><td>${esc(x.nivel)}</td><td>${esc(x.titulo)}</td><td>${infoNodo(x)}</td>
+      <td class="acciones">${!x.oculto ? `<button class="btn-icono" type="button" data-reocultar-pk="${i}">Dejar oculto</button>`
+        : choca ? `<span class="nota" style="margin:0" title="Hay un nodo visible con el mismo punto">ya hay un ${esc(x.punto)} visible</span>`
+        : `<button class="btn-icono" type="button" data-restaurar-pk="${i}">Restaurar</button>`}</td></tr>`; }).join('')}</tbody></table>
+    <div class="nota">Restaurar vuelve a mostrar el nodo en PreKOM con su Resumen, su color y sus comentarios.</div>`
+    : '<div class="nota">No hay nodos ocultos en esta obra.</div>';
+  $('pk-sec').querySelectorAll('[data-restaurar-pk]').forEach(b => b.onclick = () => { w[+b.dataset.restaurarPk].oculto = false; renderFichaPk(); });
+  $('pk-sec').querySelectorAll('[data-reocultar-pk]').forEach(b => b.onclick = () => { w[+b.dataset.reocultarPk].oculto = true; renderFichaPk(); });
+}
+
+function renderPkCopiar() {
+  const ed = st.pkEd;
+  const otras = obrasPk().filter(a => a.obra_id !== ed.id);
+  const visiblesAqui = new Set(ed.orig.arbol.map(x => x.punto));
+  const on = ed.origenNodos;
+  const nuevos = on ? on.filter(x => !visiblesAqui.has(x.punto)) : [];
+  $('pk-sec').innerHTML = `
+    ${otras.length ? `<div class="grid"><div class="campo c2"><label>Copiar desde la obra</label>
+      <select class="inp" id="pk-c-origen"><option value="">Elegí una obra…</option>${otras.map(a => `<option value="${a.obra_id}" ${a.obra_id === ed.copiarDesde ? 'selected' : ''}>${esc(a.ob.codigo)} ${esc(a.ob.nombre_corto)}</option>`).join('')}</select></div></div>
+    <div id="pk-c-prev" style="margin-top:12px">${!ed.copiarDesde ? '' : !on ? '<div class="cargando" style="margin:0"><div class="spinner"></div>Leyendo la obra…</div>'
+      : `<div>La obra de origen tiene <b>${on.length}</b> nodo${on.length === 1 ? '' : 's'} visible${on.length === 1 ? '' : 's'}.
+         Se copiarían <b>${nuevos.length}</b>${on.length - nuevos.length ? ` (los otros ${on.length - nuevos.length} ya existen acá con el mismo punto y no se tocan)` : ''}.</div>
+         ${nuevos.length ? `<div class="nota">Primeros: ${nuevos.slice(0, 8).map(x => `<span class="pk-punto">${esc(x.punto)}</span> ${esc(x.titulo)}`).join(' · ')}${nuevos.length > 8 ? ' …' : ''}</div>` : ''}
+         <div class="agregar-fila"><button class="btn" id="pk-c-copiar" type="button" ${nuevos.length && !cambiosPk().length ? '' : 'disabled'}>Copiar estructura</button>
+         ${cambiosPk().length ? '<span class="nota" style="margin:0;color:var(--warn-fg)">Guardá o descartá los cambios del árbol antes de copiar.</span>' : ''}</div>`}</div>`
+    : '<div class="nota">No hay otra obra con PreKOM para copiar.</div>'}
+    <div class="nota">Copia <b>solo puntos, niveles y títulos</b>, sin Resúmenes, colores ni comentarios. No pisa los nodos que ya existen acá
+      (visibles u ocultos) y no copia los ocultos de la obra de origen. Se guarda en el momento.</div>`;
+  const sel = $('pk-c-origen');
+  if (sel) sel.onchange = async () => {
+    ed.copiarDesde = sel.value; ed.origenNodos = null; renderFichaPk();
+    if (!sel.value) return;
+    try {
+      const nodos = await q(sb.from('pk_contenido').select('punto, nivel, titulo').eq('obra_id', sel.value).eq('oculto', false));
+      if (st.pkEd !== ed || ed.copiarDesde !== sel.value) return;
+      ed.origenNodos = nodos.sort((a, b) => compararPunto(a.punto, b.punto));
+      renderFichaPk();
+    } catch (e) { toast('No se pudo leer la obra: ' + textoError(e), true); }
+  };
+  const bc = $('pk-c-copiar');
+  if (bc) bc.onclick = async () => {
+    const origen = obra(ed.copiarDesde), destino = obra(ed.id);
+    const ok = await confirmar('Copiar estructura', [{ tipo: 'mas', html: `Se agregan <b>${nuevos.length}</b> nodos de <b>${esc(etiqObra(origen))}</b> a <b>${esc(etiqObra(destino))}</b> (puntos, niveles y títulos).` }],
+      { textoOk: 'Copiar' });
+    if (!ok) return;
+    bc.disabled = true; bc.textContent = 'Copiando…';
+    try {
+      const r = await q(sb.rpc('pk_admin_copiar_estructura', { p_origen: ed.copiarDesde, p_destino: ed.id }));
+      st.pkTab = 'arbol';
+      await abrirPk(ed.id);
+      toast(`Estructura copiada: ${r.copiados} nodo${r.copiados === 1 ? '' : 's'}${r.yaExistian ? ` · ${r.yaExistian} ya existían` : ''}`);
+    } catch (e) {
+      console.error('[copiarEstructura]', e);
+      bc.disabled = false; bc.textContent = 'Copiar estructura';
+      avisar('No se pudo copiar', esc(textoError(e)));
+    }
+  };
+}
+
+function cambiosPk() {
+  const ed = st.pkEd; if (!ed) return [];
+  const out = [];
+  ed.w.arbol.forEach(x => {
+    const o = pkOrigDe(x);
+    if (!o) { out.push({ tipo: 'mas', html: `<b>Nodo nuevo:</b> <span class="pk-punto">${esc(x.punto)}</span> ${esc(x.titulo)} (nivel ${esc(x.nivel)})` }); return; }
+    if (!o.oculto && x.oculto) {
+      const guarda = [x.tieneResumen ? 'su Resumen' : '', x.nCom ? `${x.nCom} comentario${x.nCom > 1 ? 's' : ''}` : ''].filter(Boolean).join(' y ');
+      out.push({ tipo: 'menos', html: `<b>Ocultar</b> <span class="pk-punto">${esc(o.punto)}</span> ${esc(o.titulo)}`,
+        aviso: (guarda ? `Tiene ${guarda}: quedan guardados. ` : '') + 'Deja de verse en PreKOM; se restaura desde Ocultos.' });
+      return;
+    }
+    if (o.oculto && !x.oculto) { out.push({ tipo: 'mas', html: `<b>Restaurar</b> <span class="pk-punto">${esc(o.punto)}</span> ${esc(o.titulo)}` }); return; }
+    if (x.oculto) return;
+    if (String(o.punto) !== String(x.punto)) out.push({ tipo: 'cambio', html: `<b>Punto:</b> <span class="pk-punto">${esc(o.punto)}</span> → <b class="pk-punto">${esc(x.punto)}</b> (${esc(o.titulo)})`,
+      aviso: x.tieneResumen || x.nCom ? 'Conserva su Resumen y sus comentarios.' : '' });
+    if (String(o.nivel) !== String(x.nivel)) out.push({ tipo: 'cambio', html: `<b>Nivel de ${esc(x.punto)}:</b> ${esc(o.nivel)} → <b>${esc(x.nivel)}</b>` });
+    if (String(o.titulo) !== String(x.titulo)) out.push({ tipo: 'cambio', html: `<b>Título de ${esc(x.punto)}:</b> ${esc(o.titulo)} → <b>${esc(x.titulo)}</b>` });
+  });
+  return out;
+}
+function actualizarBarraPk() {
+  const n = cambiosPk().length, el = $('pk-estado'); if (!el) return;
+  el.textContent = n ? `${n} cambio${n > 1 ? 's' : ''} sin guardar` : 'Sin cambios';
+  el.className = 'estado' + (n ? ' sucio' : '');
+  $('pk-guardar').disabled = !n; $('pk-descartar').disabled = !n;
+}
+function validarPk() {
+  const vistos = {};
+  for (const x of st.pkEd.w.arbol) {
+    if (x.oculto) continue;
+    const p = String(x.punto || '').trim();
+    if (!p) return 'Hay un nodo sin punto.';
+    if (!PK_RE_PUNTO.test(p)) return `Punto "${p}": va con números o letras separados por puntos (ej. 8.5.1).`;
+    if (vistos[p]) return `El punto ${p} está repetido.`;
+    vistos[p] = true;
+    if (!(Number.isInteger(Number(x.nivel)) && Number(x.nivel) >= 1 && Number(x.nivel) <= 10)) return `Punto ${p}: el nivel va de 1 a 10.`;
+    if (vacio(x.titulo)) return `Punto ${p}: falta el título.`;
+  }
+  return '';
+}
+async function guardarPk() {
+  const ed = st.pkEd, cambios = cambiosPk();
+  if (!cambios.length) return;
+  const err = validarPk(); if (err) { avisar('No se puede guardar', esc(err)); return; }
+  const id = ed.id;
+  const ok = await confirmar(`Guardar el árbol de PreKOM · ${esc(etiqObra(obra(id)))}`, cambios, { textoOk: 'Guardar' });
+  if (!ok) return;
+  const btn = $('pk-guardar'); btn.disabled = true; btn.textContent = 'Guardando…';
+  const w = ed.w.arbol;
+  try {
+    // Orden que respeta "un solo punto visible": 1) ocultar, 2) puntos cambiados vía un punto temporal
+    // (permite intercambiar 8.5 ↔ 8.6), 3) resto de los cambios y restauraciones, 4) altas.
+    const existentes = w.filter(x => pkOrigDe(x));
+    for (const x of existentes.filter(x => x.oculto && !pkOrigDe(x).oculto)) await q(sb.from('pk_contenido').update({ oculto: true }).eq('id', x.id));
+    const conPunto = existentes.filter(x => !x.oculto && String(pkOrigDe(x).punto) !== String(x.punto).trim());
+    for (const x of conPunto) await q(sb.from('pk_contenido').update({ punto: 'tmp' + x.id }).eq('id', x.id));
+    for (const x of existentes.filter(x => !x.oculto)) {
+      const o = pkOrigDe(x);
+      const cambio = {};
+      if (String(o.punto) !== String(x.punto).trim()) cambio.punto = String(x.punto).trim();
+      if (String(o.nivel) !== String(x.nivel)) cambio.nivel = Number(x.nivel);
+      if (String(o.titulo) !== String(x.titulo)) cambio.titulo = String(x.titulo).trim();
+      if (o.oculto) cambio.oculto = false;
+      if (Object.keys(cambio).length) await q(sb.from('pk_contenido').update(cambio).eq('id', x.id));
+    }
+    const altas = w.filter(x => !pkOrigDe(x)).map(x => ({ obra_id: id, punto: String(x.punto).trim(), nivel: Number(x.nivel), titulo: String(x.titulo).trim() }));
+    if (altas.length) await q(sb.from('pk_contenido').insert(altas));
+    st.pkEd = null;
+    await abrirPk(id);
+    toast('Árbol de PreKOM guardado');
+  } catch (e) {
+    console.error('[guardarPk]', e);
+    btn.disabled = false; btn.textContent = 'Guardar cambios';
+    await avisar('No se pudo guardar', esc(textoError(e)) + '<div class="nota">Si una parte llegó a guardarse, la ficha se recarga con lo que quedó en la base.</div>');
+    st.pkEd = null; abrirPk(id);
+  }
+}
+
+/* ════════════════════════════════════════════════════════
+   MAIL DEL CÓDIGO (v1.3) — plantilla v2.0
+   · Asunto fijo: "{{ .Token }} es tu código de acceso" (Supabase limita el
+     asunto a 255 caracteres: no escala con una línea por app).
+   · El nombre de la PWA va solo en el cuerpo: sale de goe_apps.nombre_mail,
+     según la dirección (goe_apps.url) que manda la app al pedir el código.
+   · "Generar plantilla" arma cuerpo y asunto para copiar en Supabase →
+     Authentication → Emails → Templates → Magic link y Confirm sign up.
+════════════════════════════════════════════════════════ */
+const MAIL_ASUNTO = '{{ .Token }} es tu código de acceso';
+const MAIL_RE_NOMBRE = /^[^a-z"{}]{2,30}$/;
+
+async function abrirMail() {
+  st.mailEd = null;
+  $('mail-ficha').innerHTML = '<div class="cargando"><div class="spinner"></div>Cargando…</div>';
+  try {
+    const apps = await q(sb.from('goe_apps').select('app, nombre, url, nombre_mail').order('app'));
+    D.apps = D.apps.map(a => Object.assign(a, apps.find(x => x.app === a.app) || {}));
+    const orig = { apps: apps.map(a => ({ app: a.app, nombre: a.nombre, url: a.url || '', nombreMail: a.nombre_mail || '' })) };
+    st.mailEd = { orig, w: clonar(orig), plantilla: null };
+    renderMail();
+  } catch (e) {
+    console.error('[abrirMail]', e);
+    $('mail-ficha').innerHTML = `<div class="ficha-vacia" style="color:var(--err-fg)">No se pudo cargar: ${esc(textoError(e))}</div>`;
+  }
+}
+function mailOrig(a) { return st.mailEd.orig.apps.find(o => o.app === a.app); }
+function renderMail() {
+  const ed = st.mailEd; if (!ed) return;
+  const cmb = (a, k) => String(mailOrig(a)[k]) !== String(a[k]) ? 'cambiado' : '';
+  $('mail-ficha').innerHTML = `
+    <div class="ficha-scroll">
+      <div class="ficha-tit">Mail del código <span class="chip app">v2.0</span></div>
+      <div class="ficha-sub">Nombre de cada PWA en el mail con el código de acceso (Supabase Auth). El asunto es fijo: <b>${esc(MAIL_ASUNTO)}</b>.</div>
+      <div class="card">
+        <h3>Apps del stack</h3>
+        <table class="tabla"><thead><tr><th style="width:70px">App</th><th>Nombre</th><th>Dirección de la PWA (url)</th><th style="width:220px">Nombre en el mail</th></tr></thead>
+        <tbody>${ed.w.apps.map((a, i) => `<tr class="${cmb(a, 'url') || cmb(a, 'nombreMail') ? 'cambiado' : ''}">
+          <td><b>${esc(a.app)}</b></td><td>${esc(a.nombre)}</td>
+          <td><input class="inp ${cmb(a, 'url')}" data-mail="${i}" data-k="url" value="${esc(a.url)}" placeholder="https://goeapp.github.io/…/"></td>
+          <td><input class="inp ${cmb(a, 'nombreMail')}" data-mail="${i}" data-k="nombreMail" value="${esc(a.nombreMail)}" maxlength="30" placeholder="EN MAYÚSCULAS" style="text-transform:uppercase"></td></tr>`).join('')}</tbody></table>
+        <div class="nota">El mail dice el nombre de la app cuya dirección coincide con la que manda la PWA al pedir el código (<i>emailRedirectTo</i>).
+          Una app sin dirección o sin nombre no entra en la plantilla: su mail dice <b>GOEAPP</b>. La dirección tiene que estar también en
+          Supabase → Authentication → URL Configuration → <b>Redirect URLs</b>.</div>
+      </div>
+      <div class="card">
+        <h3>Plantilla para Supabase<span class="h3-extra"><button class="btn" id="mail-generar" type="button">Generar plantilla</button></span></h3>
+        <div id="mail-plantilla">${ed.plantilla ? '' : '<div class="nota" style="margin-top:0">Se genera con lo <b>guardado</b> en la tabla de arriba.</div>'}</div>
+      </div>
+    </div>
+    <div class="barra-guardar">
+      <span class="estado" id="mail-estado"></span>
+      <button class="btn sec" id="mail-descartar" type="button">Descartar</button>
+      <button class="btn" id="mail-guardar" type="button">Guardar cambios</button>
+    </div>`;
+  $('mail-ficha').querySelectorAll('[data-mail]').forEach(el => el.oninput = () => {
+    const a = ed.w.apps[+el.dataset.mail], k = el.dataset.k;
+    a[k] = k === 'nombreMail' ? el.value.toUpperCase() : el.value.trim();
+    el.classList.toggle('cambiado', !!cmb(a, k));
+    el.closest('tr').className = cmb(a, 'url') || cmb(a, 'nombreMail') ? 'cambiado' : '';
+    actualizarBarraMail();
+  });
+  $('mail-descartar').onclick = async () => {
+    if (!cambiosMail().length) return;
+    if (await confirmar('Descartar cambios', [], { intro: '¿Volver a lo guardado?', textoOk: 'Descartar', peligro: true })) abrirMail();
+  };
+  $('mail-guardar').onclick = guardarMail;
+  $('mail-generar').onclick = async () => {
+    if (cambiosMail().length) { await avisar('Primero guardá', 'La plantilla se arma con lo guardado. Guardá (o descartá) los cambios de la tabla y volvé a generar.'); return; }
+    ed.plantilla = { cuerpo: generarPlantillaMail(ed.orig.apps), asunto: MAIL_ASUNTO, vista: (ed.orig.apps.find(a => a.app === 'pk' && a.url) || ed.orig.apps.find(a => a.url) || {}).app || '' };
+    renderMailPlantilla();
+  };
+  if (ed.plantilla) renderMailPlantilla();
+  actualizarBarraMail();
+}
+// Variantes de la dirección que puede mandar una PWA (con y sin barra final, con index.html) — igual que la v1.0
+function variantesUrl(url) {
+  const base = String(url || '').trim().replace(/index\.html$/i, '').replace(/\/+$/, '');
+  return [base + '/', base, base + '/index.html'];
+}
+function generarPlantillaMail(apps) {
+  const conNombre = apps.filter(a => !vacio(a.url) && !vacio(a.nombreMail) && /^https?:\/\/[^"{}\s]+$/.test(a.url) && MAIL_RE_NOMBRE.test(a.nombreMail));
+  const hoy = new Date().toLocaleDateString('es-AR');
+  const ramas = conNombre.map((a, i) =>
+    `{{- ${i ? 'else if' : 'if'} eq .RedirectTo ${variantesUrl(a.url).map(u => '"' + u + '"').join(' ')} -}}{{- $app = "${a.nombreMail}" -}}`).join('\n');
+  return `{{- /*
+  mail_codigo_goeapp_v2_0.html — Plantilla del mail con el código de acceso (Supabase Auth)
+  Generada por GOE Admin ${VERSION_UI} el ${hoy}, desde goe_apps (url + nombre_mail).
+  Va en: Supabase → Authentication → Emails → Templates → "Magic link" y también "Confirm sign up"
+  (la primera vez que una persona pide código llega con "Confirm sign up").
+  Asunto (fijo, en las dos): [código] es tu código de acceso
+  El nombre de la app sale de la dirección de la PWA que pidió el código (emailRedirectTo).
+  Si la PWA no la manda, o no está en goe_apps / Redirect URLs, dice "GOEAPP".
+*/ -}}
+{{- $app := "GOEAPP" -}}
+${ramas}${ramas ? '\n{{- end -}}' : ''}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Código de acceso · {{ $app }}</title>
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#1e293b;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f1f5f9;padding:24px 12px;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:440px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
+        <tr>
+          <td style="background:#0f172a;padding:18px 24px;">
+            <span style="font-size:20px;font-weight:bold;letter-spacing:2px;color:#f59e0b;">{{ $app }}</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:24px 24px 8px 24px;font-size:15px;line-height:22px;">
+            Hola,<br>
+            tu código para entrar a <b>{{ $app }}</b> es:
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding:12px 24px 12px 24px;">
+            <div style="display:inline-block;background:#fef3c7;border:2px solid #f59e0b;border-radius:10px;padding:14px 26px;font-family:'Courier New',Courier,monospace;font-size:32px;font-weight:bold;letter-spacing:8px;color:#92400e;">{{ .Token }}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:8px 24px 24px 24px;font-size:14px;line-height:21px;color:#475569;">
+            Vence en 10 minutos.<br>
+            Si no lo pediste vos, ignorá este mail.
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:12px 24px;font-size:11px;color:#94a3b8;">
+            GOEAPP · Mail automático, no respondas este mensaje.
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>
+`;
+}
+// Vista previa: resuelve la plantilla como lo haría Supabase para una app (solo las construcciones que usa la plantilla)
+function vistaPreviaMail(cuerpo, redirectTo, token) {
+  let app = 'GOEAPP';
+  const re = /\{\{- (?:if|else if) eq \.RedirectTo ((?:"[^"]*" ?)+) -\}\}\{\{- \$app = "([^"]*)" -\}\}/g;
+  let m;
+  while ((m = re.exec(cuerpo))) {
+    const urls = m[1].match(/"[^"]*"/g).map(x => x.slice(1, -1));
+    if (urls.includes(redirectTo)) { app = m[2]; break; }
+  }
+  const html = cuerpo.replace(/\{\{-?[\s\S]*?-?\}\}\n?/g, t => t.includes('$app }}') || t.includes('.Token }}') ? t : '')
+    .replace(/\{\{ \$app \}\}/g, esc(app)).replace(/\{\{ \.Token \}\}/g, esc(token));
+  return { app, html };
+}
+function renderMailPlantilla() {
+  const ed = st.mailEd, p = ed.plantilla, el = $('mail-plantilla'); if (!el || !p) return;
+  const conUrl = ed.orig.apps.filter(a => a.url);
+  const sinNombre = ed.orig.apps.filter(a => vacio(a.url) || vacio(a.nombreMail)).map(a => a.app);
+  const app = ed.orig.apps.find(a => a.app === p.vista);
+  const prev = vistaPreviaMail(p.cuerpo, app ? variantesUrl(app.url)[0] : '', '123456');
+  el.innerHTML = `
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="campo"><label>Asunto (Subject)</label>
+        <div class="fila" style="display:flex;gap:8px"><input class="inp" id="mail-asunto" readonly value="${esc(p.asunto)}"><button class="btn sec chico" type="button" data-copiar="mail-asunto">Copiar</button></div>
+        <label style="margin-top:10px">Cuerpo (Body → pestaña Source)</label>
+        <textarea class="inp mail-txt" id="mail-cuerpo" readonly rows="14">${esc(p.cuerpo)}</textarea>
+        <div style="margin-top:6px"><button class="btn sec chico" type="button" data-copiar="mail-cuerpo">Copiar cuerpo</button>
+          <span class="nota">${p.cuerpo.length.toLocaleString('es-AR')} caracteres · ${conUrl.length - sinNombre.filter(x => conUrl.find(a => a.app === x)).length} app(s) con nombre${sinNombre.length ? ` · sin nombre en el mail (dicen GOEAPP): ${esc(sinNombre.join(', '))}` : ''}</span></div>
+        <div class="nota" style="margin-top:10px"><b>Dónde pegarla</b></div>
+        <ol class="pasos">
+          <li>Supabase → Authentication → Emails → Templates → <b>Magic link</b>.</li>
+          <li>En <i>Subject</i> pegá el asunto; en <i>Body</i> (pestaña <i>Source</i>) reemplazá todo por el cuerpo → <b>Save</b>.</li>
+          <li>Repetí lo mismo en <b>Confirm sign up</b>.</li>
+        </ol>
+      </div>
+      <div class="campo"><label>Vista previa (código de ejemplo 123456)</label>
+        <select class="inp" id="mail-vista">${conUrl.map(a => `<option value="${a.app}" ${a.app === p.vista ? 'selected' : ''}>${esc(a.app)} · ${esc(a.url)}</option>`).join('')}<option value="" ${p.vista === '' ? 'selected' : ''}>otra dirección (GOEAPP)</option></select>
+        <iframe class="mail-prev" id="mail-prev" title="Vista previa del mail"></iframe>
+        <div class="nota" style="margin-top:2px">Esta app → el mail dice <b id="mail-prev-app">${esc(prev.app)}</b>.</div>
+      </div>
+    </div>`;
+  $('mail-prev').srcdoc = prev.html;
+  $('mail-vista').onchange = () => { p.vista = $('mail-vista').value; renderMailPlantilla(); };
+  el.querySelectorAll('[data-copiar]').forEach(b => b.onclick = async () => {
+    const t = $(b.dataset.copiar).value;
+    try { await navigator.clipboard.writeText(t); toast('Copiado'); }
+    catch (e) { $(b.dataset.copiar).select(); document.execCommand('copy'); toast('Copiado'); }
+  });
+}
+function cambiosMail() {
+  const ed = st.mailEd; if (!ed) return [];
+  const out = [];
+  ed.w.apps.forEach(a => {
+    const o = mailOrig(a);
+    if (String(o.url) !== String(a.url)) out.push({ tipo: 'cambio', html: `<b>${esc(a.app)} · dirección:</b> ${esc(txtV(o.url))} → <b>${esc(txtV(a.url))}</b>`, aviso: a.url ? 'Tiene que estar también en Redirect URLs de Supabase.' : '' });
+    if (String(o.nombreMail) !== String(a.nombreMail)) out.push({ tipo: 'cambio', html: `<b>${esc(a.app)} · nombre en el mail:</b> ${esc(txtV(o.nombreMail))} → <b>${esc(txtV(a.nombreMail))}</b>` });
+  });
+  if (out.length) out.push({ tipo: '', html: 'Después de guardar: <b>Generar plantilla</b> y pegarla en Supabase (Magic link y Confirm sign up).' });
+  return out.length ? out : [];
+}
+function actualizarBarraMail() {
+  const n = cambiosMail().filter(c => c.tipo).length, el = $('mail-estado'); if (!el) return;
+  el.textContent = n ? `${n} cambio${n > 1 ? 's' : ''} sin guardar` : 'Sin cambios';
+  el.className = 'estado' + (n ? ' sucio' : '');
+  $('mail-guardar').disabled = !n; $('mail-descartar').disabled = !n;
+}
+function validarMail() {
+  const urls = {};
+  for (const a of st.mailEd.w.apps) {
+    if (!vacio(a.url)) {
+      if (!/^https?:\/\/[^"{}\s]+$/.test(a.url)) return `${a.app}: la dirección empieza con https:// y no lleva espacios, comillas ni llaves.`;
+      const k = variantesUrl(a.url)[0];
+      if (urls[k]) return `${a.app} y ${urls[k]} tienen la misma dirección.`;
+      urls[k] = a.app;
+    }
+    if (!vacio(a.nombreMail) && !MAIL_RE_NOMBRE.test(a.nombreMail)) return `${a.app}: el nombre en el mail va en MAYÚSCULAS, de 2 a 30 caracteres, sin comillas ni llaves.`;
+  }
+  return '';
+}
+async function guardarMail() {
+  const ed = st.mailEd, cambios = cambiosMail();
+  if (!cambios.filter(c => c.tipo).length) return;
+  const err = validarMail(); if (err) { avisar('No se puede guardar', esc(err)); return; }
+  if (!(await confirmar('Guardar apps del mail', cambios, { textoOk: 'Guardar' }))) return;
+  const btn = $('mail-guardar'); btn.disabled = true; btn.textContent = 'Guardando…';
+  try {
+    for (const a of ed.w.apps) {
+      const o = mailOrig(a);
+      if (String(o.url) === String(a.url) && String(o.nombreMail) === String(a.nombreMail)) continue;
+      await q(sb.from('goe_apps').update({ url: norm(a.url), nombre_mail: norm(a.nombreMail) }).eq('app', a.app));
+    }
+    await abrirMail();
+    toast('Guardado. Ahora generá la plantilla y pegala en Supabase.');
+  } catch (e) {
+    console.error('[guardarMail]', e);
+    btn.disabled = false; btn.textContent = 'Guardar cambios';
+    await avisar('No se pudo guardar', esc(textoError(e)));
+    abrirMail();
   }
 }
 
