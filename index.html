@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GOE Admin</title>
 <!--
-  index_admin_v1_3.html — GOE Admin v1.3 (14-oct-2026)
+  index_admin_v1_4.html — GOE Admin v1.4 (14-oct-2026)
   Repo: goeapp/admin → https://goeapp.github.io/admin/ (subir como index.html)
 
   Administración del stack sobre Supabase (proyecto PWAgoe), solo para el admin global.
@@ -15,6 +15,7 @@
   · LO:       plantilla + configuración por obra (tipos, etiquetas, PdC, avisos y calendario)
   · BDC:      general (máscaras genéricas, marcas manuales, informe semanal) + por obra (carpeta de Drive, máscaras)
   · PreKOM:   árbol de Contenido de cada obra (punto, nivel, título; ocultar / restaurar) + copiar estructura desde otra obra
+              + catálogos de Listas: Plantilla (obras nuevas) y los de cada obra (v1.4)
   · Mail:     nombre de cada app en el mail del código (goe_apps.nombre_mail) + generador de la plantilla v2.0
   · Login por código (Supabase Auth), igual que MdT v15.0, con sesión propia (admin-sb-auth).
   · Todos los cambios se guardan con botón y un resumen para confirmar.
@@ -23,7 +24,8 @@
   Requiere en Supabase: goe_esquema_v1_0.sql + goe_datos_v1_0.sql + goe_admin_v1_0.sql
                         + lo_esquema_v8_0_0.sql (tablas lo_ y lo_plantilla)
                         + bdc_esquema_v7_0_0.sql (tablas bdc_)
-                        + pk_esquema_v9_0_0.sql + pk_datos_v9_0_0.sql (tablas pk_, goe_apps.nombre_mail).
+                        + pk_esquema_v9_0_0.sql + pk_datos_v9_0_0.sql (tablas pk_, goe_apps.nombre_mail)
+                        + pk_listas_esquema_v9_1_0.sql + pk_listas_datos_v9_1_0.sql (catálogos de Listas).
 
   Changelog
   v1.0 — primera versión.
@@ -35,6 +37,10 @@
          con Ocultos → Restaurar) y "Copiar estructura" desde otra obra (solo puntos, niveles y títulos).
          Pestaña Mail: url + nombre_mail de cada app y "Generar plantilla" (mail del código v2.0:
          asunto fijo "{{ .Token }} es tu código de acceso", nombre de la PWA solo en el cuerpo).
+  v1.4 — PreKOM: catálogos de Listas (Sector, Estado, Crítico, Asignado, Marca, Unidad, Moneda) con color
+         de una paleta de 14, orden, activo y los tildes "cierra" (Estado) y "crítico" (Crítico).
+         📋 Plantilla (lo que recibe una obra al tildar PreKOM) + pestaña Catálogos en cada obra.
+         Un valor en uso no se borra: se desactiva. Renombrar cambia el texto en todas las filas.
 -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
@@ -390,7 +396,7 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
 /* ════════════════════════════════════════════════════════
    CONFIGURACIÓN
 ════════════════════════════════════════════════════════ */
-const VERSION_UI     = 'v1.3';
+const VERSION_UI     = 'v1.4';
 const REDIRECT_MAIL  = 'https://goeapp.github.io/admin/';   // la plantilla del mail lo usa para poner "GOE ADMIN"
 const SUPABASE_URL   = 'https://uhuftsxrzwhmvzygcuvp.supabase.co';
 const SUPABASE_KEY   = 'sb_publishable_TCibRAnzgaDIbn_MIirw6w_FltKG8X3';
@@ -441,7 +447,7 @@ const st = {
   loSel: null, loEd: null, loTabPrev: 'tipos',  // loEd = { id, orig, w, tab, pdcTipo } (id = uuid de obra o 'plantilla')
   bdcSel: null, bdcEd: null, bdcTabGen: 'mascaras', bdcTabObra: 'carpeta',  // v1.2 — bdcEd = { id, orig, w, tab, prueba } (id = uuid de obra o 'general')
   bdcCarpetas: null, bdcGenericas: null,
-  pkSel: null, pkEd: null, pkTab: 'arbol',   // v1.3 — pkEd = { id, orig, w, tab, copiarDesde, origenNodos }
+  pkSel: null, pkEd: null, pkTab: 'arbol', pkCatTab: 'sector',   // v1.3/v1.4 — pkEd = { id, orig, w, tab, copiarDesde, origenNodos }
   mailEd: null,                              // v1.3 — mailEd = { orig, w, plantilla }
 };
 let emailPendiente = '';
@@ -476,6 +482,8 @@ function textoError(err) {
   if (/JWT|session|token/i.test(m)) return 'La sesión venció. Volvé a ingresar.';
   if (/Failed to fetch|NetworkError|network/i.test(m)) return 'Sin conexión con la base.';
   if (/pk_contenido_punto_visible/.test(m)) return 'Ya hay un nodo visible con ese punto en la obra.';
+  if (/pk_(plantilla_)?catalogos_.*key|duplicate key.*catalogo/.test(m)) return 'Ese valor ya existe en el catálogo.';
+  if (/pk_lista_filas_.*fkey|foreign key/.test(m)) return 'Ese valor se usa en filas de Listas: no se puede borrar (desactivalo).';
   if (/pk_contenido_punto_check/.test(m)) return 'El punto va con números o letras separados por puntos (ej. 8.5.1).';
   if (/goe_apps_nombre_mail_chk/.test(m)) return 'El nombre del mail va en MAYÚSCULAS, de 2 a 30 caracteres, sin comillas ni llaves.';
   if (/row-level security|permission denied|42501/i.test(m)) return 'Sin permiso para esa operación.';
@@ -637,7 +645,7 @@ async function irVista(v) {
   if (v === 'mdt') renderMdt();
   if (v === 'lo') { renderListaLo(); abrirLo(st.loSel || PLANTILLA); }
   if (v === 'bdc') { renderListaBdc(); abrirBdc(st.bdcSel || BDC_GENERAL); }
-  if (v === 'pk') { renderListaPk(); st.pkSel ? abrirPk(st.pkSel) : (obrasPk()[0] ? abrirPk(obrasPk()[0].obra_id) : vaciarFicha('pk-ficha', 'Ninguna obra tiene PreKOM tildado.')); }
+  if (v === 'pk') { renderListaPk(); abrirPk(st.pkSel || (obrasPk()[0] ? obrasPk()[0].obra_id : PK_PLANTILLA)); }
   if (v === 'mail') abrirMail();
 }
 function vaciarFicha(id, txt) { $(id).innerHTML = `<div class="ficha-vacia">${esc(txt)}</div>`; }
@@ -2187,7 +2195,18 @@ async function guardarBdc() {
      nodo, así que renombrar un punto no los pierde.
    · Copiar estructura: solo puntos, niveles y títulos, sin pisar nada.
 ════════════════════════════════════════════════════════ */
-const PK_TABS = { arbol: 'Árbol', ocultos: 'Ocultos', copiar: 'Copiar estructura' };
+const PK_TABS = { arbol: 'Árbol', ocultos: 'Ocultos', copiar: 'Copiar estructura', catalogos: 'Catálogos' };
+// v1.4 — catálogos de Listas
+const PK_PLANTILLA = 'plantilla';
+const PK_CATS = { sector: 'Sector', estado: 'Estado', critico: 'Crítico', asignado: 'Asignado', marca: 'Marca', unidad: 'Unidad', moneda: 'Moneda' };
+const PK_PALETA = {
+  gris: ['Gris', '#64748b', '#f1f5f9', '#475569'], negro: ['Negro', '#0f172a', '#e2e8f0', '#0f172a'], rojo: ['Rojo', '#dc2626', '#fee2e2', '#991b1b'],
+  naranja: ['Naranja', '#ea580c', '#ffedd5', '#9a3412'], amarillo: ['Amarillo', '#ca8a04', '#fef9c3', '#854d0e'], lima: ['Lima', '#65a30d', '#ecfccb', '#3f6212'],
+  verde: ['Verde', '#16a34a', '#dcfce7', '#166534'], verde_agua: ['Verde agua', '#0d9488', '#ccfbf1', '#115e59'], celeste: ['Celeste', '#0284c7', '#e0f2fe', '#075985'],
+  azul: ['Azul', '#2563eb', '#dbeafe', '#1e40af'], indigo: ['Índigo', '#4f46e5', '#e0e7ff', '#3730a3'], violeta: ['Violeta', '#7c3aed', '#ede9fe', '#5b21b6'],
+  rosa: ['Rosa', '#db2777', '#fce7f3', '#9d174d'], marron: ['Marrón', '#92400e', '#f5ebe0', '#78350f']
+};
+function chipCat(valor, color) { const p = PK_PALETA[color] || PK_PALETA.gris; return `<span class="chip" style="background:${p[2]};color:${p[3]};border:1px solid ${p[1]}33">${esc(valor || '—')}</span>`; }
 const PK_RE_PUNTO = /^[0-9A-Za-z]+(\.[0-9A-Za-z]+)*$/;
 
 function obrasPk() {
@@ -2211,10 +2230,12 @@ function nivelDePunto(p) { return Math.min(10, String(p || '').split('.').filter
 
 function renderListaPk() {
   const sel = st.pkSel;
-  $('pk-lista').innerHTML = obrasPk().map(a => `<div class="item ${sel === a.obra_id ? 'sel' : ''}" data-pk="${a.obra_id}">
+  $('pk-lista').innerHTML = `<div class="item ${sel === PK_PLANTILLA ? 'sel' : ''}" data-pk="${PK_PLANTILLA}">
+      <div class="item-tit">📋 Plantilla <span class="chip">obras nuevas</span></div>
+      <div class="item-sub">Catálogos de Listas que recibe una obra al tildar PreKOM</div></div>` + (obrasPk().map(a => `<div class="item ${sel === a.obra_id ? 'sel' : ''}" data-pk="${a.obra_id}">
       <div class="item-tit">${esc(a.ob.codigo)} ${esc(a.ob.nombre_corto)} ${a.activa ? '' : '<span class="chip">inactiva en PreKOM</span>'}</div>
       <div class="item-sub">${esc([a.ob.nombre, a.ob.cliente].filter(x => !vacio(x)).join(' · ') || '—')}</div></div>`).join('')
-    || '<div class="lista-vacia">Ninguna obra tiene PreKOM tildado todavía (se tilda en Obras → Apps).</div>';
+    || '<div class="lista-vacia">Ninguna obra tiene PreKOM tildado todavía (se tilda en Obras → Apps).</div>');
   $('pk-lista').querySelectorAll('[data-pk]').forEach(el => el.onclick = () => seleccionarPk(el.dataset.pk));
 }
 async function seleccionarPk(id) {
@@ -2227,9 +2248,21 @@ async function abrirPk(id) {
   renderListaPk();
   $('pk-ficha').innerHTML = '<div class="cargando"><div class="spinner"></div>Cargando…</div>';
   try {
-    const [nodos, coms] = await Promise.all([
+    const catModelo = (c, uso) => ({ id: c.id, catalogo: c.catalogo, valor: c.valor, color: c.color, orden: c.orden, activo: !!c.activo,
+      cierra: !!c.cierra, critico: !!c.es_critico, uso: uso ? Number(uso[String(c.id)] || 0) : 0, borrar: false });
+    if (id === PK_PLANTILLA) {
+      const filas = await q(sb.from('pk_plantilla_catalogos').select('*').order('catalogo').order('orden').order('valor'));
+      if (st.pkSel !== id) return;
+      const orig = { cat: filas.map(c => catModelo(c)) };
+      st.pkEd = { id, orig, w: clonar(orig), tab: 'catalogos', catTab: st.pkCatTab || 'sector' };
+      renderFichaPk();
+      return;
+    }
+    const [nodos, coms, cats, uso] = await Promise.all([
       q(sb.from('pk_contenido').select('id, punto, nivel, titulo, oculto, resumen, color_fondo').eq('obra_id', id)),
       q(sb.from('pk_comentarios_contenido').select('contenido_id').eq('obra_id', id).eq('oculto', false)),
+      q(sb.from('pk_catalogos').select('*').eq('obra_id', id).order('catalogo').order('orden').order('valor')),
+      q(sb.rpc('pk_catalogos_uso', { p_obra: id })),
     ]);
     if (st.pkSel !== id) return;
     const nCom = {};
@@ -2237,8 +2270,8 @@ async function abrirPk(id) {
     const arbol = nodos.map(n => ({ id: n.id, punto: n.punto, nivel: n.nivel, titulo: n.titulo, oculto: !!n.oculto,
       tieneResumen: !vacio(String(n.resumen || '').replace(/<[^>]*>/g, '')), color: n.color_fondo || '', nCom: nCom[n.id] || 0 }))
       .sort((a, b) => compararPunto(a.punto, b.punto) || a.id - b.id);
-    const orig = { arbol };
-    st.pkEd = { id, orig, w: clonar(orig), tab: PK_TABS[st.pkTab] ? st.pkTab : 'arbol', copiarDesde: '', origenNodos: null };
+    const orig = { arbol, cat: cats.map(c => catModelo(c, uso)) };
+    st.pkEd = { id, orig, w: clonar(orig), tab: PK_TABS[st.pkTab] ? st.pkTab : 'arbol', copiarDesde: '', origenNodos: null, catTab: st.pkCatTab || 'sector' };
     renderFichaPk();
   } catch (e) {
     console.error('[abrirPk]', e);
@@ -2269,16 +2302,19 @@ function infoNodo(x) {
 
 function renderFichaPk() {
   const ed = st.pkEd; if (!ed) return;
-  const ob = obra(ed.id);
-  const visibles = ed.w.arbol.filter(x => !x.oculto).length;
-  const ocultos = ed.w.arbol.filter(x => x.id != null && pkOrigDe(x) && pkOrigDe(x).oculto).length;
-  const n = { arbol: visibles, ocultos, copiar: '' };
+  const esPlantilla = ed.id === PK_PLANTILLA;
+  const ob = esPlantilla ? null : obra(ed.id);
+  const visibles = esPlantilla ? 0 : ed.w.arbol.filter(x => !x.oculto).length;
+  const ocultos = esPlantilla ? 0 : ed.w.arbol.filter(x => x.id != null && pkOrigDe(x) && pkOrigDe(x).oculto).length;
+  const n = { arbol: visibles, ocultos, copiar: '', catalogos: ed.w.cat.filter(c => !c.borrar).length };
+  const tabs = esPlantilla ? { catalogos: 'Catálogos' } : PK_TABS;
   $('pk-ficha').innerHTML = `
     <div class="ficha-scroll">
-      <div class="ficha-tit">${esc(ob.codigo)} ${esc(ob.nombre_corto)} <span class="chip app">PreKOM</span></div>
-      <div class="ficha-sub">Árbol de Contenido de la obra. PreKOM lo muestra ordenado por punto (8.2 antes que 8.10). Lo que guardes acá se ve la próxima vez que se abra la obra.</div>
+      <div class="ficha-tit">${esPlantilla ? '📋 Plantilla PreKOM' : esc(ob.codigo) + ' ' + esc(ob.nombre_corto)} <span class="chip app">PreKOM</span></div>
+      <div class="ficha-sub">${esPlantilla ? 'Catálogos de Listas que recibe una obra al tildar PreKOM. Cambiar la plantilla no toca las obras que ya tienen los suyos.'
+        : 'Árbol de Contenido y catálogos de Listas de la obra. PreKOM ordena el árbol por punto (8.2 antes que 8.10). Lo que guardes acá se ve la próxima vez que se abra la obra.'}</div>
       <div class="card">
-        <div class="tabs" id="pk-tabs">${Object.entries(PK_TABS).map(([k, t]) => `<button type="button" data-pktab="${k}" class="${k === ed.tab ? 'activa' : ''}">${t}${n[k] !== '' ? `<span class="cnt">${n[k]}</span>` : ''}</button>`).join('')}</div>
+        <div class="tabs" id="pk-tabs">${Object.entries(tabs).map(([k, t]) => `<button type="button" data-pktab="${k}" class="${k === ed.tab ? 'activa' : ''}">${t}${n[k] !== '' ? `<span class="cnt">${n[k]}</span>` : ''}</button>`).join('')}</div>
         <div id="pk-sec"></div>
       </div>
     </div>
@@ -2293,7 +2329,7 @@ function renderFichaPk() {
     if (await confirmar('Descartar cambios', [], { intro: '¿Volver a lo guardado?', textoOk: 'Descartar', peligro: true })) abrirPk(ed.id);
   };
   $('pk-guardar').onclick = guardarPk;
-  ({ arbol: renderPkArbol, ocultos: renderPkOcultos, copiar: renderPkCopiar })[ed.tab]();
+  ({ arbol: renderPkArbol, ocultos: renderPkOcultos, copiar: renderPkCopiar, catalogos: renderPkCatalogos })[esPlantilla ? 'catalogos' : ed.tab]();
   actualizarBarraPk();
 }
 
@@ -2425,7 +2461,7 @@ function renderPkCopiar() {
 function cambiosPk() {
   const ed = st.pkEd; if (!ed) return [];
   const out = [];
-  ed.w.arbol.forEach(x => {
+  (ed.w.arbol || []).forEach(x => {
     const o = pkOrigDe(x);
     if (!o) { out.push({ tipo: 'mas', html: `<b>Nodo nuevo:</b> <span class="pk-punto">${esc(x.punto)}</span> ${esc(x.titulo)} (nivel ${esc(x.nivel)})` }); return; }
     if (!o.oculto && x.oculto) {
@@ -2441,7 +2477,7 @@ function cambiosPk() {
     if (String(o.nivel) !== String(x.nivel)) out.push({ tipo: 'cambio', html: `<b>Nivel de ${esc(x.punto)}:</b> ${esc(o.nivel)} → <b>${esc(x.nivel)}</b>` });
     if (String(o.titulo) !== String(x.titulo)) out.push({ tipo: 'cambio', html: `<b>Título de ${esc(x.punto)}:</b> ${esc(o.titulo)} → <b>${esc(x.titulo)}</b>` });
   });
-  return out;
+  return out.concat(cambiosCat());
 }
 function actualizarBarraPk() {
   const n = cambiosPk().length, el = $('pk-estado'); if (!el) return;
@@ -2450,8 +2486,9 @@ function actualizarBarraPk() {
   $('pk-guardar').disabled = !n; $('pk-descartar').disabled = !n;
 }
 function validarPk() {
+  const errCat = validarCat(); if (errCat) return errCat;
   const vistos = {};
-  for (const x of st.pkEd.w.arbol) {
+  for (const x of (st.pkEd.w.arbol || [])) {
     if (x.oculto) continue;
     const p = String(x.punto || '').trim();
     if (!p) return 'Hay un nodo sin punto.';
@@ -2468,11 +2505,12 @@ async function guardarPk() {
   if (!cambios.length) return;
   const err = validarPk(); if (err) { avisar('No se puede guardar', esc(err)); return; }
   const id = ed.id;
-  const ok = await confirmar(`Guardar el árbol de PreKOM · ${esc(etiqObra(obra(id)))}`, cambios, { textoOk: 'Guardar' });
+  const ok = await confirmar(id === PK_PLANTILLA ? 'Guardar la Plantilla de PreKOM' : `Guardar PreKOM · ${esc(etiqObra(obra(id)))}`, cambios, { textoOk: 'Guardar' });
   if (!ok) return;
   const btn = $('pk-guardar'); btn.disabled = true; btn.textContent = 'Guardando…';
-  const w = ed.w.arbol;
+  const w = ed.w.arbol || [];
   try {
+    await guardarCat(ed);
     // Orden que respeta "un solo punto visible": 1) ocultar, 2) puntos cambiados vía un punto temporal
     // (permite intercambiar 8.5 ↔ 8.6), 3) resto de los cambios y restauraciones, 4) altas.
     const existentes = w.filter(x => pkOrigDe(x));
@@ -2492,13 +2530,138 @@ async function guardarPk() {
     if (altas.length) await q(sb.from('pk_contenido').insert(altas));
     st.pkEd = null;
     await abrirPk(id);
-    toast('Árbol de PreKOM guardado');
+    toast(id === PK_PLANTILLA ? 'Plantilla guardada' : 'PreKOM guardado');
   } catch (e) {
     console.error('[guardarPk]', e);
     btn.disabled = false; btn.textContent = 'Guardar cambios';
     await avisar('No se pudo guardar', esc(textoError(e)) + '<div class="nota">Si una parte llegó a guardarse, la ficha se recarga con lo que quedó en la base.</div>');
     st.pkEd = null; abrirPk(id);
   }
+}
+
+// ── Catálogos de Listas (v1.4) ──
+function catClave(x) { return x.id != null ? 'id' + x.id : 'nuevo:' + x._tmp; }
+function catOrigDe(x) { return st.pkEd.orig.cat.find(o => catClave(o) === catClave(x)); }
+const CAT_CAMPOS = { valor: 'texto', color: 'color', orden: 'orden', activo: 'activo', cierra: '"cierra"', critico: '"crítico"' };
+function catFilaClase(x) {
+  const o = catOrigDe(x);
+  if (!o) return 'nuevo';
+  if (x.borrar) return 'quitado';
+  return Object.keys(CAT_CAMPOS).some(k => String(o[k]) !== String(x[k])) ? 'cambiado' : '';
+}
+function renderPkCatalogos() {
+  const ed = st.pkEd, esPlantilla = ed.id === PK_PLANTILLA;
+  const cat = ed.catTab;
+  const filas = ed.w.cat.map((x, i) => ({ x, i })).filter(({ x }) => x.catalogo === cat)
+    .sort((a, b) => (Number(a.x.orden) || 0) - (Number(b.x.orden) || 0) || String(a.x.valor).localeCompare(String(b.x.valor)));
+  const extra = cat === 'estado' ? '<th style="width:80px" title="Cierra la fila: Días en gris y no cuenta como pendiente">Cierra</th>'
+    : cat === 'critico' ? '<th style="width:80px" title="Cuenta como crítica en las tarjetas y el filtro">Crítico</th>' : '';
+  const cmb = (x, k) => { const o = catOrigDe(x); return o && String(o[k]) !== String(x[k]) ? 'cambiado' : ''; };
+  $('pk-sec').innerHTML = `
+    <div class="tabs" id="pk-cat-tabs" style="margin-top:-4px">${Object.entries(PK_CATS).map(([k, t]) => `<button type="button" data-cattab="${k}" class="${k === cat ? 'activa' : ''}">${t}<span class="cnt">${ed.w.cat.filter(c => c.catalogo === k && !c.borrar).length}</span></button>`).join('')}</div>
+    ${filas.length ? `<table class="tabla"><thead><tr><th>Valor</th><th style="width:190px">Color</th><th style="width:80px">Orden</th><th style="width:70px">Activo</th>${extra}<th style="width:150px">Se ve así</th>${esPlantilla ? '' : '<th style="width:90px">En uso</th>'}<th></th></tr></thead>
+    <tbody>${filas.map(({ x, i }) => `<tr class="${catFilaClase(x)}">
+      <td><input class="inp ${cmb(x, 'valor')}" data-cati="${i}" data-k="valor" value="${esc(x.valor)}" maxlength="60" ${x.borrar ? 'disabled' : ''}></td>
+      <td><select class="inp ${cmb(x, 'color')}" data-cati="${i}" data-k="color" ${x.borrar ? 'disabled' : ''}>${Object.entries(PK_PALETA).map(([k, p]) => `<option value="${k}" ${k === x.color ? 'selected' : ''}>● ${p[0]}</option>`).join('')}</select></td>
+      <td><input class="inp ${cmb(x, 'orden')}" data-cati="${i}" data-k="orden" type="number" value="${esc(x.orden)}" ${x.borrar ? 'disabled' : ''}></td>
+      <td><label class="check"><input type="checkbox" data-cati="${i}" data-k="activo" ${x.activo ? 'checked' : ''} ${x.borrar ? 'disabled' : ''}></label></td>
+      ${cat === 'estado' ? `<td><label class="check"><input type="checkbox" data-cati="${i}" data-k="cierra" ${x.cierra ? 'checked' : ''} ${x.borrar ? 'disabled' : ''}></label></td>` : ''}
+      ${cat === 'critico' ? `<td><label class="check"><input type="checkbox" data-cati="${i}" data-k="critico" ${x.critico ? 'checked' : ''} ${x.borrar ? 'disabled' : ''}></label></td>` : ''}
+      <td>${chipCat(x.valor, x.color)}</td>
+      ${esPlantilla ? '' : `<td>${x.uso ? `<span class="chip">${x.uso} fila${x.uso > 1 ? 's' : ''}</span>` : '<span class="nota" style="margin:0">—</span>'}</td>`}
+      <td class="acciones">${x.id == null ? `<button class="btn-icono peligro" type="button" data-catquitar="${i}">Quitar</button>`
+        : esPlantilla ? `<button class="btn-icono ${x.borrar ? '' : 'peligro'}" type="button" data-catborrar="${i}">${x.borrar ? 'No borrar' : 'Borrar'}</button>` : ''}</td></tr>`).join('')}</tbody></table>`
+      : `<div class="nota">Sin valores en ${PK_CATS[cat]}.</div>`}
+    <div class="agregar-fila"><input class="inp" id="pk-cat-nuevo" placeholder="Nuevo valor de ${PK_CATS[cat]}" maxlength="60">
+      <button class="btn sec" id="pk-cat-agregar" type="button">+ Agregar</button>
+      ${esPlantilla ? '' : '<button class="btn sec" id="pk-cat-plantilla" type="button" style="margin-left:auto" title="Agrega los valores de la Plantilla que esta obra no tiene; no pisa nada">Traer de la Plantilla lo que falta</button>'}</div>
+    <div class="nota">${esPlantilla ? 'La plantilla se copia a una obra cuando se le tilda PreKOM. Los cambios acá no tocan las obras que ya tienen sus catálogos.'
+      : 'Un valor en uso <b>no se borra: se desactiva</b> (deja de ofrecerse en el formulario, pero las filas que lo tienen lo siguen mostrando). Cambiar el texto lo cambia en todas las filas de la obra.'}
+      ${cat === 'estado' ? ' <b>Cierra</b>: la fila deja de estar pendiente (Días en gris; no cuenta como vencida). ' : ''}${cat === 'critico' ? ' <b>Crítico</b>: el valor que cuenta como crítica en las tarjetas y en el filtro "Solo críticas". ' : ''}</div>`;
+  $('pk-cat-tabs').querySelectorAll('[data-cattab]').forEach(b => b.onclick = () => { ed.catTab = b.dataset.cattab; st.pkCatTab = ed.catTab; renderFichaPk(); });
+  $('pk-sec').querySelectorAll('[data-cati]').forEach(el => el.oninput = el.onchange = () => {
+    const x = ed.w.cat[+el.dataset.cati], k = el.dataset.k;
+    x[k] = el.type === 'checkbox' ? el.checked : (k === 'orden' ? (el.value === '' ? '' : Number(el.value)) : el.value);
+    if (el.type === 'checkbox' || el.tagName === 'SELECT') { renderFichaPk(); return; }
+    const o = catOrigDe(x);
+    el.classList.toggle('cambiado', !!o && String(o[k]) !== String(x[k]));
+    el.closest('tr').className = catFilaClase(x);
+    actualizarBarraPk();
+  });
+  $('pk-sec').querySelectorAll('[data-catquitar]').forEach(b => b.onclick = () => { ed.w.cat.splice(+b.dataset.catquitar, 1); renderFichaPk(); });
+  $('pk-sec').querySelectorAll('[data-catborrar]').forEach(b => b.onclick = () => { const x = ed.w.cat[+b.dataset.catborrar]; x.borrar = !x.borrar; renderFichaPk(); });
+  const agregar = () => {
+    const v = $('pk-cat-nuevo').value.trim();
+    if (!v) return;
+    if (ed.w.cat.find(c => c.catalogo === cat && String(c.valor).trim().toLowerCase() === v.toLowerCase())) { toast(`Ya existe "${v}" en ${PK_CATS[cat]}.`, true); return; }
+    const deCat = ed.w.cat.filter(c => c.catalogo === cat);
+    ed.w.cat.push({ id: null, _tmp: uuid(), catalogo: cat, valor: v, color: (deCat[deCat.length - 1] || {}).color || 'gris',
+      orden: deCat.reduce((m, c) => Math.max(m, Number(c.orden) || 0), 0) + 1, activo: true, cierra: false, critico: false, uso: 0, borrar: false });
+    renderFichaPk();
+    setTimeout(() => { const el = $('pk-cat-nuevo'); if (el) el.focus(); }, 0);
+  };
+  $('pk-cat-agregar').onclick = agregar;
+  $('pk-cat-nuevo').onkeydown = e => { if (e.key === 'Enter') agregar(); };
+  const bp = $('pk-cat-plantilla');
+  if (bp) bp.onclick = async () => {
+    if (cambiosPk().length) { avisar('Primero guardá', 'Guardá o descartá los cambios antes de traer valores de la Plantilla.'); return; }
+    if (!(await confirmar('Traer de la Plantilla', [], { intro: 'Se agregan a esta obra los valores de la Plantilla que no tiene (en todos los catálogos). No cambia ni borra nada de lo que ya tiene.', textoOk: 'Traer' }))) return;
+    try {
+      const r = await q(sb.rpc('pk_admin_copiar_plantilla', { p_obra: ed.id }));
+      await abrirPk(ed.id);
+      toast(r.copiados ? `Se agregaron ${r.copiados} valor${r.copiados > 1 ? 'es' : ''}` : 'La obra ya tenía todo lo de la Plantilla');
+    } catch (e) { avisar('No se pudo', esc(textoError(e))); }
+  };
+}
+function cambiosCat() {
+  const ed = st.pkEd; if (!ed || !ed.w.cat) return [];
+  const out = [];
+  ed.w.cat.forEach(x => {
+    const o = catOrigDe(x), etq = `${PK_CATS[x.catalogo]}`;
+    if (!o) { out.push({ tipo: 'mas', html: `<b>${etq}:</b> se agrega ${chipCat(x.valor, x.color)}` }); return; }
+    if (x.borrar) { out.push({ tipo: 'menos', html: `<b>${etq}:</b> se borra ${chipCat(o.valor, o.color)} de la Plantilla`, aviso: 'Las obras que ya lo tienen no cambian.' }); return; }
+    Object.keys(CAT_CAMPOS).forEach(k => {
+      if (String(o[k]) === String(x[k])) return;
+      const desact = k === 'activo' && !x[k];
+      let aviso = '';
+      if (desact && o.uso) aviso = `Lo usan ${o.uso} fila${o.uso > 1 ? 's' : ''}: lo siguen mostrando, pero deja de ofrecerse.`;
+      if (k === 'valor' && o.uso) aviso = `Cambia en ${o.uso} fila${o.uso > 1 ? 's' : ''} de la obra.`;
+      const de = k === 'color' ? (PK_PALETA[o[k]] || [o[k]])[0] : txtV(o[k]), a = k === 'color' ? (PK_PALETA[x[k]] || [x[k]])[0] : txtV(x[k]);
+      out.push({ tipo: desact ? 'menos' : 'cambio', html: `<b>${etq} ${esc(o.valor)}:</b> ${CAT_CAMPOS[k]} ${esc(de)} → <b>${esc(a)}</b>`, aviso });
+    });
+  });
+  return out;
+}
+function validarCat() {
+  const ed = st.pkEd; if (!ed || !ed.w.cat) return '';
+  const vistos = {};
+  for (const x of ed.w.cat) {
+    if (x.borrar) continue;
+    const v = String(x.valor || '').trim();
+    if (!v) return `${PK_CATS[x.catalogo]}: hay un valor sin texto.`;
+    const k = x.catalogo + '|' + v.toLowerCase();
+    if (vistos[k]) return `${PK_CATS[x.catalogo]}: "${v}" está repetido.`;
+    vistos[k] = true;
+    if (!Number.isInteger(Number(x.orden))) return `${PK_CATS[x.catalogo]} "${v}": el orden es un número entero.`;
+  }
+  for (const c of ['sector', 'estado']) if (!ed.w.cat.some(x => x.catalogo === c && x.activo && !x.borrar)) return `${PK_CATS[c]} necesita al menos un valor activo (es obligatorio en las filas).`;
+  return '';
+}
+async function guardarCat(ed) {
+  const tabla = ed.id === PK_PLANTILLA ? 'pk_plantilla_catalogos' : 'pk_catalogos';
+  const fila = x => {
+    const f = { catalogo: x.catalogo, valor: String(x.valor).trim(), color: x.color, orden: Number(x.orden) || 0, activo: !!x.activo, cierra: !!x.cierra, es_critico: !!x.critico };
+    if (ed.id !== PK_PLANTILLA) f.obra_id = ed.id;
+    return f;
+  };
+  for (const x of ed.w.cat) {
+    const o = catOrigDe(x);
+    if (!o) continue;
+    if (x.borrar) { await q(sb.from(tabla).delete().eq('id', x.id)); continue; }
+    if (Object.keys(CAT_CAMPOS).some(k => String(o[k]) !== String(x[k]))) await q(sb.from(tabla).update(fila(x)).eq('id', x.id));
+  }
+  const altas = ed.w.cat.filter(x => !catOrigDe(x)).map(fila);
+  if (altas.length) await q(sb.from(tabla).insert(altas));
 }
 
 /* ════════════════════════════════════════════════════════
