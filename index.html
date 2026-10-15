@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GOE Admin</title>
 <!--
-  index_admin_v1_4.html — GOE Admin v1.4 (14-oct-2026)
+  index_admin_v1_5.html — GOE Admin v1.5 (15-oct-2026)
   Repo: goeapp/admin → https://goeapp.github.io/admin/ (subir como index.html)
 
   Administración del stack sobre Supabase (proyecto PWAgoe), solo para el admin global.
@@ -16,6 +16,8 @@
   · BDC:      general (máscaras genéricas, marcas manuales, informe semanal) + por obra (carpeta de Drive, máscaras)
   · PreKOM:   árbol de Contenido de cada obra (punto, nivel, título; ocultar / restaurar) + copiar estructura desde otra obra
               + catálogos de Listas: Plantilla (obras nuevas) y los de cada obra (v1.4)
+  · CO:       ClimaObra por obra: ubicación (con mapa), jornada, umbrales de día perdido, avisos por persona
+              (recibe, canal, hora) y decisiones ocultas → Restaurar (v1.5)
   · Mail:     nombre de cada app en el mail del código (goe_apps.nombre_mail) + generador de la plantilla v2.0
   · Login por código (Supabase Auth), igual que MdT v15.0, con sesión propia (admin-sb-auth).
   · Todos los cambios se guardan con botón y un resumen para confirmar.
@@ -25,7 +27,8 @@
                         + lo_esquema_v8_0_0.sql (tablas lo_ y lo_plantilla)
                         + bdc_esquema_v7_0_0.sql (tablas bdc_)
                         + pk_esquema_v9_0_0.sql + pk_datos_v9_0_0.sql (tablas pk_, goe_apps.nombre_mail)
-                        + pk_listas_esquema_v9_1_0.sql + pk_listas_datos_v9_1_0.sql (catálogos de Listas).
+                        + pk_listas_esquema_v9_1_0.sql + pk_listas_datos_v9_1_0.sql (catálogos de Listas)
+                        + co_esquema_v17_0_1.sql + co_datos_v17_0_0.sql (tablas co_, app co).
 
   Changelog
   v1.0 — primera versión.
@@ -41,10 +44,17 @@
          de una paleta de 14, orden, activo y los tildes "cierra" (Estado) y "crítico" (Crítico).
          📋 Plantilla (lo que recibe una obra al tildar PreKOM) + pestaña Catálogos en cada obra.
          Un valor en uso no se borra: se desactiva. Renombrar cambia el texto en todas las filas.
+  v1.5 — ClimaObra (app co): se tilda en Obras → Apps y tiene miembros con perfil (ver / editar / administrar),
+         como las otras apps. Pestaña CO: obras con CO → Obra (lat/lon con mapa de OpenStreetMap o pegando las
+         coordenadas de Google Maps, jornada, umbrales: lluvia, viento, ráfaga, calor y helada, activa) ·
+         Avisos (por persona con acceso: recibe, canal mail / Telegram / los dos, hora de 3 a 23) ·
+         Ocultas (decisiones de día perdido quitadas en CO → Restaurar).
 -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <style>
 /* ── TOKENS (mismos de MdT v15.0) ───────────────────────── */
 :root {
@@ -203,6 +213,10 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
 .barra-orden { display: flex; align-items: center; gap: 10px; background: var(--warn-bg); color: var(--warn-fg); padding: 8px 12px; border-radius: var(--radius-sm); margin-bottom: 12px; font-size: .8rem; font-weight: 600; }
 .barra-orden span { margin-right: auto; }
 
+/* ── CO (v1.5) ─────────────────────────────────────────── */
+.co-mapa { height: 300px; border-radius: var(--radius-sm); border: 1px solid var(--border); margin-top: 6px; background: #e2e8f0; }
+.co-umb { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px 14px; }
+.co-unidad { font-size: .7rem; color: var(--muted); }
 /* ── MODAL ─────────────────────────────────────────────── */
 #modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: none; align-items: center; justify-content: center; z-index: 50; }
 #modal-overlay.abierto { display: flex; }
@@ -287,6 +301,7 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
       <button type="button" data-vista="lo">LO</button>
       <button type="button" data-vista="bdc">BDC</button>
       <button type="button" data-vista="pk">PreKOM</button>
+      <button type="button" data-vista="co">CO</button>
       <button type="button" data-vista="mail">Mail</button>
     </nav>
     <span class="hdr-sep"></span>
@@ -374,6 +389,17 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
     <div class="col-ficha" id="pk-ficha"><div class="ficha-vacia">Elegí una obra de la lista.</div></div>
   </section>
 
+  <!-- ClimaObra (v1.5) -->
+  <section class="vista" id="vista-co">
+    <aside class="col-lista">
+      <div class="lista-top">
+        <div class="nota" style="margin:0">Obras con ClimaObra tildado: ubicación, jornada, umbrales de día perdido y avisos.</div>
+      </div>
+      <div class="lista-items" id="co-lista"></div>
+    </aside>
+    <div class="col-ficha" id="co-ficha"><div class="ficha-vacia">Elegí una obra de la lista.</div></div>
+  </section>
+
   <!-- Mail del código (v1.3) -->
   <section class="vista" id="vista-mail">
     <div class="col-ficha" id="mail-ficha"><div class="ficha-vacia">Cargando…</div></div>
@@ -396,7 +422,7 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
 /* ════════════════════════════════════════════════════════
    CONFIGURACIÓN
 ════════════════════════════════════════════════════════ */
-const VERSION_UI     = 'v1.4';
+const VERSION_UI     = 'v1.5';
 const REDIRECT_MAIL  = 'https://goeapp.github.io/admin/';   // la plantilla del mail lo usa para poner "GOE ADMIN"
 const SUPABASE_URL   = 'https://uhuftsxrzwhmvzygcuvp.supabase.co';
 const SUPABASE_KEY   = 'sb_publishable_TCibRAnzgaDIbn_MIirw6w_FltKG8X3';
@@ -408,8 +434,8 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 });
 
 // Apps que usan obras (MdT y Admin no tienen obras)
-const APPS_OBRA  = ['bdc', 'pk', 'lo'];
-const APP_CORTO  = { bdc: 'BDC', pk: 'PreKOM', lo: 'LO', mdt: 'MdT', admin: 'Admin' };
+const APPS_OBRA  = ['bdc', 'pk', 'lo', 'co'];
+const APP_CORTO  = { bdc: 'BDC', pk: 'PreKOM', lo: 'LO', co: 'CO', mdt: 'MdT', admin: 'Admin' };
 const ESTADOS    = { oferta: 'Oferta', activa: 'Activa', cerrada: 'Cerrada', archivada: 'Archivada' };
 const ESTADO_CHIP = { oferta: 'warn', activa: 'ok', cerrada: '', archivada: '' };
 const CAMPOS_OBRA = [
@@ -449,6 +475,7 @@ const st = {
   bdcCarpetas: null, bdcGenericas: null,
   pkSel: null, pkEd: null, pkTab: 'arbol', pkCatTab: 'sector',   // v1.3/v1.4 — pkEd = { id, orig, w, tab, copiarDesde, origenNodos }
   mailEd: null,                              // v1.3 — mailEd = { orig, w, plantilla }
+  coSel: null, coEd: null, coTab: 'obra',    // v1.5 — coEd = { id, orig, w, tab, ocultas, configurada }
 };
 let emailPendiente = '';
 
@@ -486,6 +513,8 @@ function textoError(err) {
   if (/pk_lista_filas_.*fkey|foreign key/.test(m)) return 'Ese valor se usa en filas de Listas: no se puede borrar (desactivalo).';
   if (/pk_contenido_punto_check/.test(m)) return 'El punto va con números o letras separados por puntos (ej. 8.5.1).';
   if (/goe_apps_nombre_mail_chk/.test(m)) return 'El nombre del mail va en MAYÚSCULAS, de 2 a 30 caracteres, sin comillas ni llaves.';
+  if (/co_avisos_config_hora_check/.test(m)) return 'La hora del aviso va de 3 a 23.';
+  if (/Configuración inválida/.test(m)) return m;
   if (/row-level security|permission denied|42501/i.test(m)) return 'Sin permiso para esa operación.';
   return m;
 }
@@ -627,7 +656,7 @@ async function cargarDatos() {
 ════════════════════════════════════════════════════════ */
 function haySinGuardar() {
   return (st.obraEd && cambiosObra().length > 0) || (st.personaEd && cambiosPersona().length > 0) || !!st.mdtOrden || (st.loEd && cambiosLo().length > 0) || (st.bdcEd && cambiosBdc().length > 0)
-    || (st.pkEd && cambiosPk().length > 0) || (st.mailEd && cambiosMail().length > 0);
+    || (st.pkEd && cambiosPk().length > 0) || (st.mailEd && cambiosMail().length > 0) || (st.coEd && cambiosCo().length > 0);
 }
 async function puedoSalir() {
   if (!haySinGuardar()) return true;
@@ -636,7 +665,7 @@ async function puedoSalir() {
 async function irVista(v) {
   if (v === st.vista && st.appIniciada) return;
   if (!(await puedoSalir())) return;
-  st.obraEd = null; st.personaEd = null; st.mdtOrden = null; st.loEd = null; st.bdcEd = null; st.pkEd = null; st.mailEd = null;
+  st.obraEd = null; st.personaEd = null; st.mdtOrden = null; st.loEd = null; st.bdcEd = null; st.pkEd = null; st.mailEd = null; st.coEd = null;
   st.vista = v;
   document.querySelectorAll('.hdr-nav button').forEach(b => b.classList.toggle('activa', b.dataset.vista === v));
   document.querySelectorAll('.vista').forEach(s => s.classList.toggle('activa', s.id === 'vista-' + v));
@@ -646,6 +675,7 @@ async function irVista(v) {
   if (v === 'lo') { renderListaLo(); abrirLo(st.loSel || PLANTILLA); }
   if (v === 'bdc') { renderListaBdc(); abrirBdc(st.bdcSel || BDC_GENERAL); }
   if (v === 'pk') { renderListaPk(); abrirPk(st.pkSel || (obrasPk()[0] ? obrasPk()[0].obra_id : PK_PLANTILLA)); }
+  if (v === 'co') { renderListaCo(); if (st.coSel || obrasCo()[0]) abrirCo(st.coSel || obrasCo()[0].obra_id); else vaciarFicha('co-ficha', 'Ninguna obra tiene ClimaObra tildado (se tilda en Obras → Apps).'); }
   if (v === 'mail') abrirMail();
 }
 function vaciarFicha(id, txt) { $(id).innerHTML = `<div class="ficha-vacia">${esc(txt)}</div>`; }
@@ -752,7 +782,8 @@ function renderFichaObra() {
       <div class="ficha-sub">${ed.nueva ? 'Completá al menos código y nombre corto.' : 'El código se puede cambiar: todo está conectado por un ID interno que no cambia.'}</div>
       <div class="card"><h3>Datos</h3><div class="grid">${campos}</div></div>
       <div class="card"><h3>Apps</h3><div>${apps}</div>
-        <div class="nota">Destildar una app no borra nada: la obra queda inactiva en esa app y se puede volver a activar.</div></div>
+        <div class="nota">Destildar una app no borra nada: la obra queda inactiva en esa app y se puede volver a activar.</div>
+        ${w.apps.co && w.apps.co.presente && w.apps.co.activa ? '<div class="nota">ClimaObra: la ubicación, la jornada, los umbrales y los avisos se cargan en la pestaña <b>CO</b>.</div>' : ''}</div>
       <div class="card"><h3>Miembros</h3>
         ${appsMiembros.length ? `<div class="tabs" id="obra-tabs">${tabs}</div><div id="obra-miembros"></div>` : '<div class="nota">Tildá al menos una app para cargar miembros.</div>'}
         ${ag ? `<div class="nota">${esc(ag.nombre_apellido)} es admin global: administra todas las obras sin figurar en la lista.</div>` : ''}
@@ -2662,6 +2693,286 @@ async function guardarCat(ed) {
   }
   const altas = ed.w.cat.filter(x => !catOrigDe(x)).map(fila);
   if (altas.length) await q(sb.from(tabla).insert(altas));
+}
+
+/* ════════════════════════════════════════════════════════
+   CLIMAOBRA (v1.5) — co_obras, co_avisos_config, co_decisiones ocultas
+════════════════════════════════════════════════════════ */
+const CO_TABS = { obra: 'Obra', avisos: 'Avisos', ocultas: 'Ocultas' };
+const CO_CAMPOS = [
+  { k: 'lat', t: 'Latitud' }, { k: 'lon', t: 'Longitud' },
+  { k: 'horaInicio', t: 'Inicio jornada' }, { k: 'horaFin', t: 'Fin jornada' },
+  { k: 'lluvia', t: 'Lluvia (mm/día)' }, { k: 'viento', t: 'Viento medio (km/h)' }, { k: 'rafaga', t: 'Ráfaga (km/h)' },
+  { k: 'tempMax', t: 'Calor (°C)' }, { k: 'tempMin', t: 'Helada (°C)' }, { k: 'activa', t: 'Activa' },
+];
+const CO_CANALES = { mail: 'Mail', telegram: 'Telegram', ambos: 'Los dos' };
+let coMapa = null, coMarca = null;
+
+function obrasCo() {
+  return D.obraApps.filter(a => a.app === 'co').map(a => ({ ...a, ob: obra(a.obra_id) })).filter(a => a.ob)
+    .sort((a, b) => a.ob.codigo.localeCompare(b.ob.codigo));
+}
+function renderListaCo() {
+  const sel = st.coSel;
+  $('co-lista').innerHTML = obrasCo().map(a => `<div class="item ${sel === a.obra_id ? 'sel' : ''}" data-co="${a.obra_id}">
+      <div class="item-tit">${esc(a.ob.codigo)} ${esc(a.ob.nombre_corto)} ${a.activa ? '' : '<span class="chip">inactiva en CO</span>'}</div>
+      <div class="item-sub">${esc([a.ob.nombre, a.ob.cliente].filter(x => !vacio(x)).join(' · ') || '—')}</div></div>`).join('')
+    || '<div class="lista-vacia">Ninguna obra tiene ClimaObra tildado todavía (se tilda en Obras → Apps).</div>';
+  $('co-lista').querySelectorAll('[data-co]').forEach(el => el.onclick = () => seleccionarCo(el.dataset.co));
+}
+async function seleccionarCo(id) {
+  if (st.coEd && st.coSel === id) return;
+  if (!(await puedoSalir())) return;
+  abrirCo(id);
+}
+const numOVacio = v => (v === null || v === undefined) ? '' : String(v);
+async function abrirCo(id) {
+  st.coSel = id; st.coEd = null;
+  renderListaCo();
+  $('co-ficha').innerHTML = '<div class="cargando"><div class="spinner"></div>Cargando…</div>';
+  try {
+    const [cfgs, avisos, ocultas] = await Promise.all([
+      q(sb.from('co_obras').select('*').eq('obra_id', id)),
+      q(sb.from('co_avisos_config').select('*').eq('obra_id', id)),
+      q(sb.from('co_decisiones').select('*').eq('obra_id', id).eq('oculta', true).order('fecha', { ascending: false }).limit(200)),
+    ]);
+    if (st.coSel !== id) return;
+    const c = cfgs[0];
+    const cfg = c ? { lat: numOVacio(c.lat), lon: numOVacio(c.lon), horaInicio: String(c.hora_inicio), horaFin: String(c.hora_fin),
+      lluvia: numOVacio(c.lluvia_dp), viento: numOVacio(c.viento_dp), rafaga: numOVacio(c.rafaga_dp),
+      tempMax: numOVacio(c.temp_max_dp), tempMin: numOVacio(c.temp_min_dp), activa: !!c.activa }
+      : { lat: '', lon: '', horaInicio: '8', horaFin: '17', lluvia: '10', viento: '40', rafaga: '', tempMax: '', tempMin: '', activa: true };
+    // Avisos: personas con acceso a la obra en CO + las que ya tienen configuración
+    const ids = new Set(D.accesos.filter(a => a.obra_id === id && a.app === 'co').map(a => a.persona_id));
+    avisos.forEach(a => ids.add(a.persona_id));
+    const filas = [...ids].map(pid => {
+      const a = avisos.find(x => x.persona_id === pid);
+      return { persona_id: pid, existe: !!a, recibe: a ? !!a.recibe : false, canal: a ? a.canal : 'mail', hora: a ? String(a.hora) : '3' };
+    }).sort((x, y) => nombreP(x.persona_id).localeCompare(nombreP(y.persona_id)));
+    const orig = { cfg, avisos: filas };
+    st.coEd = { id, orig, w: clonar(orig), tab: c && CO_TABS[st.coTab] ? st.coTab : 'obra', ocultas, configurada: !!c };   // sin configurar → abre en Obra
+    renderFichaCo();
+  } catch (e) {
+    console.error('[abrirCo]', e);
+    $('co-ficha').innerHTML = `<div class="ficha-vacia" style="color:var(--err-fg)">No se pudo cargar: ${esc(textoError(e))}</div>`;
+  }
+}
+function renderFichaCo() {
+  const ed = st.coEd; if (!ed) return;
+  const ob = obra(ed.id);
+  const n = { obra: '', avisos: ed.w.avisos.filter(a => a.recibe).length, ocultas: ed.ocultas.length };
+  $('co-ficha').innerHTML = `
+    <div class="ficha-scroll">
+      <div class="ficha-tit">${esc(ob.codigo)} ${esc(ob.nombre_corto)} <span class="chip app">CO</span> ${ed.configurada ? '' : '<span class="chip warn">sin configurar</span>'}</div>
+      <div class="ficha-sub">${ed.configurada ? 'Lo que guardes acá lo usa CO Sync en la próxima consulta (3:00) y ClimaObra la próxima vez que se abra.'
+        : 'La obra todavía no aparece en ClimaObra: cargá la ubicación y los umbrales y guardá.'}</div>
+      <div class="card">
+        <div class="tabs" id="co-tabs">${Object.entries(CO_TABS).map(([k, t]) => `<button type="button" data-cotab="${k}" class="${k === ed.tab ? 'activa' : ''}">${t}${n[k] !== '' ? `<span class="cnt">${n[k]}</span>` : ''}</button>`).join('')}</div>
+        <div id="co-sec"></div>
+      </div>
+    </div>
+    <div class="barra-guardar">
+      <span class="estado" id="co-estado"></span>
+      <button class="btn sec" id="co-descartar" type="button">Descartar</button>
+      <button class="btn" id="co-guardar" type="button">Guardar cambios</button>
+    </div>`;
+  $('co-tabs').querySelectorAll('[data-cotab]').forEach(b => b.onclick = () => { ed.tab = b.dataset.cotab; st.coTab = ed.tab; renderFichaCo(); });
+  $('co-descartar').onclick = async () => {
+    if (!cambiosCo().length) return;
+    if (await confirmar('Descartar cambios', [], { intro: '¿Volver a lo guardado?', textoOk: 'Descartar', peligro: true })) abrirCo(ed.id);
+  };
+  $('co-guardar').onclick = guardarCo;
+  ({ obra: renderCoObra, avisos: renderCoAvisos, ocultas: renderCoOcultas })[ed.tab]();
+  actualizarBarraCo();
+}
+function coCls(k) { const ed = st.coEd; return String(ed.w.cfg[k]) !== String(ed.orig.cfg[k]) ? 'cambiado' : ''; }
+function coInp(k, attrs) { return `<input class="inp ${coCls(k)}" data-cok="${k}" value="${esc(st.coEd.w.cfg[k])}" ${attrs || ''}>`; }
+function coSelHora(k, desde, hasta) {
+  const v = st.coEd.w.cfg[k];
+  let o = ''; for (let h = desde; h <= hasta; h++) o += `<option value="${h}" ${String(h) === String(v) ? 'selected' : ''}>${h} h</option>`;
+  return `<select class="inp ${coCls(k)}" data-cok="${k}">${o}</select>`;
+}
+function renderCoObra() {
+  const w = st.coEd.w.cfg;
+  $('co-sec').innerHTML = `
+    <h3 style="font-family:'Bebas Neue',sans-serif;font-weight:400;font-size:1.05rem;margin-bottom:8px">Ubicación</h3>
+    <div class="grid">
+      <div class="campo"><label>Latitud <span class="req">*</span></label>${coInp('lat', 'inputmode="decimal" placeholder="-34.8477"')}</div>
+      <div class="campo"><label>Longitud <span class="req">*</span></label>${coInp('lon', 'inputmode="decimal" placeholder="-57.9332"')}</div>
+      <div class="campo c2"><label>Pegar coordenadas de Google Maps</label>
+        <input class="inp" id="co-pegar" placeholder="-34.8477494, -57.9332436 (clic derecho en el mapa → copiar)"></div>
+    </div>
+    <div class="co-mapa" id="co-mapa"></div>
+    <div class="nota">Tocá el mapa para mover el punto. El pronóstico de wttr.in se pide para estas coordenadas.</div>
+    <h3 style="font-family:'Bebas Neue',sans-serif;font-weight:400;font-size:1.05rem;margin:16px 0 8px">Jornada</h3>
+    <div class="grid">
+      <div class="campo"><label>Inicio</label>${coSelHora('horaInicio', 0, 23)}</div>
+      <div class="campo"><label>Fin</label>${coSelHora('horaFin', 1, 24)}</div>
+      <div class="campo c2"><label>&nbsp;</label><label class="check" style="text-transform:none;font-size:.84rem;color:var(--text);font-weight:500">
+        <input type="checkbox" data-cok="activa" ${w.activa ? 'checked' : ''}> Activa en ClimaObra (se consulta todos los días)</label></div>
+    </div>
+    <div class="nota">La jornada sirve para calcular las horas perdidas de un parcial y para resaltar los bloques en ClimaObra. Las alertas miran el día completo (0 a 24 h).</div>
+    <h3 style="font-family:'Bebas Neue',sans-serif;font-weight:400;font-size:1.05rem;margin:16px 0 8px">Umbrales de probable día perdido</h3>
+    <div class="co-umb">
+      <div class="campo"><label>Lluvia</label>${coInp('lluvia', 'inputmode="decimal"')}<span class="co-unidad">mm en el día (suma)</span></div>
+      <div class="campo"><label>Viento medio</label>${coInp('viento', 'inputmode="decimal"')}<span class="co-unidad">km/h</span></div>
+      <div class="campo"><label>Ráfaga</label>${coInp('rafaga', 'inputmode="decimal" placeholder="opcional"')}<span class="co-unidad">km/h</span></div>
+      <div class="campo"><label>Calor</label>${coInp('tempMax', 'inputmode="decimal" placeholder="opcional"')}<span class="co-unidad">°C (máxima)</span></div>
+      <div class="campo"><label>Helada</label>${coInp('tempMin', 'inputmode="decimal" placeholder="opcional"')}<span class="co-unidad">°C (mínima)</span></div>
+    </div>
+    <div class="nota">Vacío = no alerta por esa causa. Cualquier umbral que se cruce alcanza para el aviso.</div>`;
+  $('co-sec').querySelectorAll('[data-cok]').forEach(el => el.oninput = el.onchange = () => {
+    const k = el.dataset.cok;
+    w[k] = el.type === 'checkbox' ? el.checked : el.value.trim().replace(',', '.');
+    if (el.type !== 'checkbox') el.classList.toggle('cambiado', !!coCls(k));
+    if (k === 'lat' || k === 'lon') coPintarPunto(false);
+    actualizarBarraCo();
+  });
+  $('co-pegar').onchange = $('co-pegar').onpaste = () => setTimeout(() => {
+    const m = String($('co-pegar').value).match(/(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)/);
+    if (!m) { toast('No se reconocen coordenadas (formato: -34.84, -57.93).', true); return; }
+    w.lat = m[1]; w.lon = m[2]; $('co-pegar').value = '';
+    renderCoObra(); actualizarBarraCo(); toast('Coordenadas cargadas');
+  }, 0);
+  coMontarMapa();
+}
+function coMontarMapa() {
+  const cont = $('co-mapa');
+  if (!cont || !window.L) { if (cont) cont.innerHTML = '<div class="ficha-vacia" style="padding:20px">No se pudo cargar el mapa: cargá las coordenadas a mano.</div>'; return; }
+  if (coMapa) { coMapa.remove(); coMapa = null; coMarca = null; }
+  coMapa = L.map(cont);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(coMapa);
+  coMapa.on('click', e => {
+    const w = st.coEd.w.cfg;
+    w.lat = e.latlng.lat.toFixed(7); w.lon = e.latlng.lng.toFixed(7);
+    document.querySelectorAll('#co-sec [data-cok="lat"], #co-sec [data-cok="lon"]').forEach(el => { el.value = w[el.dataset.cok]; el.classList.toggle('cambiado', !!coCls(el.dataset.cok)); });
+    coPintarPunto(false); actualizarBarraCo();
+  });
+  coPintarPunto(true);
+}
+function coPintarPunto(centrar) {
+  if (!coMapa) return;
+  const w = st.coEd.w.cfg, lat = Number(w.lat), lon = Number(w.lon);
+  const valido = w.lat !== '' && w.lon !== '' && isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+  if (!valido) { if (coMarca) { coMarca.remove(); coMarca = null; } if (centrar) coMapa.setView([-38.4, -63.6], 4); return; }
+  if (!coMarca) coMarca = L.circleMarker([lat, lon], { radius: 9, color: '#fff', weight: 3, fillColor: '#d97706', fillOpacity: 1 }).addTo(coMapa); else coMarca.setLatLng([lat, lon]);
+  if (centrar) coMapa.setView([lat, lon], 10);
+}
+function renderCoAvisos() {
+  const ed = st.coEd, w = ed.w.avisos;
+  const filas = w.map((a, i) => {
+    const o = ed.orig.avisos.find(x => x.persona_id === a.persona_id);
+    const cambio = ['recibe', 'canal', 'hora'].some(k => String(o[k]) !== String(a[k]));
+    const p = persona(a.persona_id) || {};
+    const acc = D.accesos.find(x => x.persona_id === a.persona_id && x.obra_id === ed.id && x.app === 'co');
+    const chat = !vacio(p.telegram_chat_id);
+    const avisoTg = a.recibe && a.canal !== 'mail' && !chat ? '<span class="chip warn" title="Cargalo en Personas">sin chat_id: va por mail</span>' : '';
+    const avisoAcc = !acc ? '<span class="chip err" title="Sin acceso a la obra en CO: no recibe aunque esté tildado">sin acceso</span>' : '';
+    const opcHora = Array.from({ length: 21 }, (_, j) => j + 3).map(h => `<option value="${h}" ${String(h) === String(a.hora) ? 'selected' : ''}>${h}:00</option>`).join('');
+    return `<tr class="${cambio ? 'cambiado' : ''}">
+      <td><b>${esc(nombreP(a.persona_id))}</b><div class="nota" style="margin:0">${esc(mailPpal(a.persona_id))}</div></td>
+      <td>${acc ? esc(acc.perfil) : '—'} ${avisoAcc}</td>
+      <td><label class="check"><input type="checkbox" data-cor="${i}" data-k="recibe" ${a.recibe ? 'checked' : ''}> recibe</label></td>
+      <td style="width:150px"><select class="inp" data-cor="${i}" data-k="canal" ${a.recibe ? '' : 'disabled'}>${Object.entries(CO_CANALES).map(([k, t]) => `<option value="${k}" ${k === a.canal ? 'selected' : ''}>${t}</option>`).join('')}</select></td>
+      <td style="width:110px"><select class="inp" data-cor="${i}" data-k="hora" ${a.recibe ? '' : 'disabled'}>${opcHora}</select></td>
+      <td>${avisoTg}</td></tr>`;
+  }).join('');
+  $('co-sec').innerHTML = w.length ? `<table class="tabla"><thead><tr><th>Persona</th><th>Perfil en CO</th><th>Aviso</th><th>Canal</th><th>Hora</th><th></th></tr></thead><tbody>${filas}</tbody></table>
+    <div class="nota">El aviso sale solo si hay algo (alerta nueva, cambio, aviso levantado o un día pronosticado sin confirmar). Cada persona recibe <b>un solo mensaje por hora</b> con todas sus obras.
+      La consulta es a las 3:00; si elegís otra hora, el mismo mensaje llega a esa hora.
+      Telegram usa el chat_id de la persona (Personas); si no tiene o falla, va por mail.</div>`
+    : '<div class="nota">Nadie tiene acceso a esta obra en ClimaObra. Agregá miembros en Obras → Miembros → CO y volvé acá para configurar sus avisos.</div>';
+  $('co-sec').querySelectorAll('[data-cor]').forEach(el => el.onchange = () => {
+    const a = w[+el.dataset.cor], k = el.dataset.k;
+    a[k] = el.type === 'checkbox' ? el.checked : el.value;
+    renderCoAvisos(); actualizarBarraCo();
+    const tab = document.querySelector('#co-tabs [data-cotab="avisos"] .cnt'); if (tab) tab.textContent = w.filter(x => x.recibe).length;
+  });
+}
+function renderCoOcultas() {
+  const ed = st.coEd;
+  $('co-sec').innerHTML = ed.ocultas.length ? `<table class="tabla"><thead><tr><th style="width:100px">Día</th><th>Decisión</th><th>Quién la cargó</th><th>Quién la quitó</th><th></th></tr></thead>
+    <tbody>${ed.ocultas.map(d => `<tr>
+      <td><b>${fmtFecha(d.fecha)}</b></td>
+      <td>${d.decision === 'confirmado' ? `Perdido ${d.tipo === 'total' ? 'total' : 'parcial ' + d.desde + '–' + d.hasta + ' h'} · ${esc(String(d.horas_perdidas ?? ''))} h · ${esc((d.causas || []).join(', '))}` : 'Se trabajó'}
+        ${d.observacion ? `<div class="nota" style="margin:0">${esc(d.observacion)}</div>` : ''}</td>
+      <td>${esc(d.usuario)}<div class="nota" style="margin:0">${esc(new Date(d.creado_en).toLocaleString('es-AR'))}</div></td>
+      <td>${esc(d.oculta_por || '—')}<div class="nota" style="margin:0">${d.oculta_en ? esc(new Date(d.oculta_en).toLocaleString('es-AR')) : ''}</div></td>
+      <td class="acciones"><button class="btn-icono" type="button" data-restaurar-co="${d.id}">Restaurar</button></td></tr>`).join('')}</tbody></table>
+    <div class="nota">Se ocultan al quitar o cambiar una decisión en ClimaObra (queda la historia). Restaurar la vuelve a mostrar; si ese día tiene otra decisión visible, esa pasa a oculta.</div>`
+    : '<div class="nota">No hay decisiones ocultas en esta obra.</div>';
+  $('co-sec').querySelectorAll('[data-restaurar-co]').forEach(b => b.onclick = async () => {
+    const d = ed.ocultas.find(x => x.id === b.dataset.restaurarCo);
+    if (!(await confirmar('Restaurar decisión', [{ tipo: 'mas', html: `<b>${fmtFecha(d.fecha)}:</b> vuelve a quedar visible en ClimaObra`, aviso: 'Si ese día tiene otra decisión visible, pasa a oculta.' }], { textoOk: 'Restaurar' }))) return;
+    try { await q(sb.rpc('co_decision_restaurar', { p_id: d.id })); toast('Decisión restaurada'); await abrirCo(ed.id); }
+    catch (e) { avisar('No se pudo restaurar', esc(textoError(e))); }
+  });
+}
+function cambiosCo() {
+  const ed = st.coEd; if (!ed) return [];
+  const out = [], o = ed.orig.cfg, w = ed.w.cfg;
+  CO_CAMPOS.forEach(c => {
+    if (String(o[c.k]) === String(w[c.k])) return;
+    const txt = v => c.k === 'activa' ? (v ? 'sí' : 'no') : (v === '' ? '—' : v);
+    out.push({ tipo: 'cambio', html: `<b>${c.t}:</b> ${esc(txt(o[c.k]))} → <b>${esc(txt(w[c.k]))}</b>`,
+      aviso: c.k === 'activa' && !w[c.k] ? 'CO Sync deja de consultarla y sale del mapa de ClimaObra. No se borra nada.' : '' });
+  });
+  if (!ed.configurada && !out.length) out.push({ tipo: 'mas', html: '<b>Configuración inicial</b> de la obra en ClimaObra' });
+  ed.w.avisos.forEach(a => {
+    const x = ed.orig.avisos.find(y => y.persona_id === a.persona_id);
+    if (['recibe', 'canal', 'hora'].every(k => String(x[k]) === String(a[k]))) return;
+    const desc = a.recibe ? `recibe por <b>${CO_CANALES[a.canal]}</b> a las <b>${a.hora}:00</b>` : 'deja de recibir';
+    out.push({ tipo: a.recibe ? (x.recibe ? 'cambio' : 'mas') : 'menos', html: `<b>Aviso · ${esc(nombreP(a.persona_id))}:</b> ${desc}` });
+  });
+  return out;
+}
+function actualizarBarraCo() {
+  const n = cambiosCo().length, el = $('co-estado'); if (!el) return;
+  el.textContent = n ? `${n} cambio${n > 1 ? 's' : ''} sin guardar` : 'Sin cambios';
+  el.className = 'estado' + (n ? ' sucio' : '');
+  $('co-guardar').disabled = !n; $('co-descartar').disabled = !n;
+}
+function validarCo() {
+  const w = st.coEd.w.cfg, num = v => v === '' ? null : Number(v);
+  const lat = num(w.lat), lon = num(w.lon);
+  if (lat === null || lon === null || !isFinite(lat) || !isFinite(lon)) return 'Faltan la latitud y la longitud (tocá el mapa o pegá las coordenadas).';
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return 'La latitud va de -90 a 90 y la longitud de -180 a 180.';
+  if (Number(w.horaFin) <= Number(w.horaInicio)) return 'El fin de la jornada tiene que ser posterior al inicio.';
+  for (const k of ['lluvia', 'viento', 'rafaga']) {
+    const v = num(w[k]); if (v !== null && (!isFinite(v) || v <= 0)) return `${CO_CAMPOS.find(c => c.k === k).t}: tiene que ser un número mayor que 0 (o vacío).`;
+  }
+  for (const k of ['tempMax', 'tempMin']) { const v = num(w[k]); if (v !== null && !isFinite(v)) return `${CO_CAMPOS.find(c => c.k === k).t}: tiene que ser un número (o vacío).`; }
+  if (num(w.tempMax) !== null && num(w.tempMin) !== null && Number(w.tempMax) <= Number(w.tempMin)) return 'El umbral de calor tiene que ser mayor que el de helada.';
+  if (num(w.lluvia) === null && num(w.viento) === null && num(w.rafaga) === null && num(w.tempMax) === null && num(w.tempMin) === null)
+    return 'Cargá al menos un umbral: sin umbrales la obra nunca avisa.';
+  return '';
+}
+async function guardarCo() {
+  const ed = st.coEd, cambios = cambiosCo();
+  if (!cambios.length) return;
+  const err = validarCo(); if (err) { ed.tab = 'obra'; renderFichaCo(); avisar('No se puede guardar', esc(err)); return; }
+  if (!(await confirmar('Guardar ClimaObra · ' + esc(etiqObra(obra(ed.id))), cambios, { textoOk: 'Guardar' }))) return;
+  const btn = $('co-guardar'); btn.disabled = true; btn.textContent = 'Guardando…';
+  try {
+    const o = ed.orig.cfg, w = ed.w.cfg;
+    if (!ed.configurada || CO_CAMPOS.some(c => String(o[c.k]) !== String(w[c.k]))) {
+      await q(sb.rpc('co_obra_guardar', { p_obra: ed.id, p_cfg: {
+        lat: Number(w.lat), lon: Number(w.lon), horaInicio: Number(w.horaInicio), horaFin: Number(w.horaFin),
+        lluvia: w.lluvia, viento: w.viento, rafaga: w.rafaga, tempMax: w.tempMax, tempMin: w.tempMin, activa: !!w.activa } }));
+    }
+    const filas = ed.w.avisos.filter(a => {
+      const x = ed.orig.avisos.find(y => y.persona_id === a.persona_id);
+      return ['recibe', 'canal', 'hora'].some(k => String(x[k]) !== String(a[k]));
+    }).map(a => ({ persona_id: a.persona_id, obra_id: ed.id, recibe: !!a.recibe, canal: a.canal, hora: Number(a.hora) }));
+    if (filas.length) await q(sb.from('co_avisos_config').upsert(filas, { onConflict: 'persona_id,obra_id' }));
+    toast('Cambios guardados');
+    await abrirCo(ed.id);
+  } catch (e) {
+    console.error('[guardarCo]', e);
+    btn.disabled = false; btn.textContent = 'Guardar cambios';
+    await avisar('No se pudo guardar', esc(textoError(e)) + '<div class="nota">Si una parte llegó a guardarse, la ficha se recarga con lo que quedó en la base.</div>');
+    abrirCo(ed.id);
+  }
 }
 
 /* ════════════════════════════════════════════════════════
