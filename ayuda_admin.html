@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title id="page-title">GOE Admin — Ayuda</title>
+<!--
+  ayuda_admin_v1_0.html — Ayuda de GOE Admin v1.5 (16-oct-2026)
+  Repo: goeapp/admin → https://goeapp.github.io/admin/ayuda.html (subir como ayuda.html)
+  Se abre desde el botón "?" del encabezado (se suma en GOE Admin v1.6).
+  Mismo motor que instructivo_libroobra_v1_3: el texto está todo en CONTENIDO; el render no se toca.
+-->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f1f5f9; --surface: #ffffff; --border: #e2e8f0;
+    --accent: #d97706; --accent-lt: #fef3c7; --accent-fg: #92400e;
+    --text: #1e293b; --muted: #64748b; --dark: #0f172a;
+    --ok-bg: #dcfce7; --ok-fg: #166534;
+    --radius: 12px;
+  }
+  html { scroll-behavior: smooth; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  b, strong { font-weight: 600; color: var(--text); }
+
+  /* ── HEADER ── */
+  .header { background: var(--dark); padding: 46px 16px 40px; text-align: center; }
+  .header-eyebrow { font-size: 11px; font-weight: 500; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
+  .header-title { font-family: 'Bebas Neue', sans-serif; font-size: clamp(48px, 8vw, 84px); letter-spacing: .04em; color: #fff; line-height: 1; margin-bottom: 12px; }
+  .header-title span { color: var(--accent); }
+  .header-subtitle { font-size: 15px; font-weight: 300; color: #94a3b8; }
+  .header-rule { width: 40px; height: 2px; background: var(--accent); margin: 18px auto 0; border: none; }
+
+  /* ── LAYOUT ── */
+  .page { max-width: 820px; margin: 0 auto; padding: 0 16px 80px; }
+  .section { margin-top: 48px; scroll-margin-top: 16px; }
+  .section-label { font-size: 10.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+  .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* ── ÍNDICE ── */
+  .indice { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; justify-content: center; }
+  .indice a { display: inline-flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 500; color: var(--text); text-decoration: none; transition: border-color .15s, background .15s; }
+  .indice a:hover { border-color: var(--accent); background: #fff7ed; }
+  .indice a .n { font-family: 'Bebas Neue', sans-serif; font-size: 15px; color: var(--accent); }
+
+  /* ── RESUMEN ── */
+  .intro-card { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius); padding: 22px 26px; }
+  .intro-card p { color: var(--muted); font-weight: 300; font-size: 15px; line-height: 1.7; }
+  .flow { margin-top: 18px; display: flex; flex-direction: column; }
+  .flow-step { display: grid; grid-template-columns: 40px 1fr; gap: 14px; position: relative; padding-bottom: 20px; }
+  .flow-step:last-child { padding-bottom: 0; }
+  .flow-step:not(:last-child)::before { content: ''; position: absolute; left: 19px; top: 36px; bottom: 0; width: 2px; background: var(--border); }
+  .step-num { width: 38px; height: 38px; border-radius: 50%; background: var(--dark); color: #fff; font-family: 'Bebas Neue', sans-serif; font-size: 18px; display: flex; align-items: center; justify-content: center; position: relative; z-index: 1; }
+  .step-body { padding-top: 6px; }
+  .step-title { font-size: 14.5px; font-weight: 600; margin-bottom: 2px; }
+  .step-title a { color: var(--accent); text-decoration: none; font-weight: 500; font-size: 12.5px; margin-left: 6px; }
+  .step-detail { font-size: 13.5px; color: var(--muted); font-weight: 300; line-height: 1.55; }
+
+  .regla-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .regla { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+  .regla-icon { font-size: 20px; margin-bottom: 6px; }
+  .regla-title { font-size: 13.5px; font-weight: 600; margin-bottom: 3px; }
+  .regla-text { font-size: 13px; color: var(--muted); font-weight: 300; line-height: 1.55; }
+
+  /* ── MÓDULO ── */
+  .mod { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .mod-head { display: flex; align-items: center; gap: 14px; padding: 18px 22px; border-bottom: 1px solid var(--border); background: #fafbfc; }
+  .mod-n { font-family: 'Bebas Neue', sans-serif; font-size: 34px; color: var(--accent); line-height: 1; min-width: 30px; }
+  .mod-icon { font-size: 24px; }
+  .mod-name { font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: .04em; line-height: 1.05; }
+  .mod-para { font-size: 13px; color: var(--muted); font-weight: 300; }
+  .mod-body { padding: 18px 22px 22px; }
+  .bloque { margin-top: 18px; }
+  .bloque:first-child { margin-top: 0; }
+  .bloque-tit { font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+
+  .antes { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+  .antes li { font-size: 13.5px; padding: 7px 12px 7px 34px; background: var(--ok-bg); color: var(--ok-fg); border-radius: 8px; position: relative; }
+  .antes li::before { content: '✓'; position: absolute; left: 13px; font-weight: 700; }
+  .antes li b { color: var(--ok-fg); }
+
+  .pasos { list-style: none; counter-reset: paso; display: flex; flex-direction: column; gap: 10px; }
+  .pasos > li { counter-increment: paso; display: grid; grid-template-columns: 28px 1fr; gap: 10px; }
+  .pasos > li::before { content: counter(paso); width: 26px; height: 26px; border-radius: 50%; background: var(--dark); color: #fff; font-family: 'Bebas Neue', sans-serif; font-size: 15px; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+  .paso-tit { font-size: 14px; font-weight: 600; }
+  .paso-det { font-size: 13.5px; color: var(--muted); font-weight: 300; line-height: 1.55; }
+  .sub { list-style: none; margin-top: 5px; display: flex; flex-direction: column; gap: 3px; }
+  .sub li { font-size: 13px; color: var(--muted); font-weight: 300; padding-left: 16px; position: relative; line-height: 1.5; }
+  .sub li::before { content: ''; position: absolute; left: 3px; top: 9px; width: 6px; height: 2px; background: var(--accent); }
+
+  .cuidado { background: var(--accent-lt); border-radius: 10px; padding: 12px 16px 12px 16px; border-left: 3px solid var(--accent); }
+  .cuidado ul { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+  .cuidado li { font-size: 13px; color: var(--accent-fg); line-height: 1.5; padding-left: 20px; position: relative; }
+  .cuidado li::before { content: '⚠'; position: absolute; left: 0; font-size: 12px; }
+  .cuidado li b { color: var(--accent-fg); }
+
+  .arriba { display: inline-block; margin-top: 10px; font-size: 12px; color: var(--muted); text-decoration: none; }
+  .arriba:hover { color: var(--accent); }
+
+  /* ── FOOTER ── */
+  .footer { margin-top: 56px; border-top: 1px solid var(--border); padding-top: 24px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .footer div { font-size: 12px; color: var(--muted); font-weight: 300; }
+
+  @media (max-width: 600px) {
+    .regla-grid { grid-template-columns: 1fr; }
+    .mod-head { padding: 14px 16px; } .mod-body { padding: 14px 16px 18px; }
+    .mod-name { font-size: 22px; }
+  }
+  @media print {
+    body { background: #fff; } .indice, .arriba { display: none; }
+    .mod, .regla, .intro-card { break-inside: avoid; box-shadow: none; }
+    .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+
+<header class="header" id="arriba">
+  <p class="header-eyebrow" id="hdr-eyebrow"></p>
+  <h1 class="header-title" id="hdr-title"></h1>
+  <p class="header-subtitle" id="hdr-subtitle"></p>
+  <hr class="header-rule">
+  <nav class="indice" id="indice"></nav>
+</header>
+
+<div class="page">
+  <section class="section" id="sec-resumen"></section>
+  <section class="section" id="sec-reglas"></section>
+  <div id="sec-modulos"></div>
+  <footer class="footer" id="pie"></footer>
+</div>
+
+<script>
+// ╔══════════════════════════════════════════════════════════════════╗
+// ║           CONTENIDO EDITABLE — modificar solo aquí              ║
+// ║  Podés agregar o quitar ítems en los arrays: el formato se      ║
+// ║  ajusta solo. <b>texto</b> = negrita.                           ║
+// ║  Módulo: { id, icon, nombre, para, antes[], pasos[], cuidado[] }║
+// ║  Paso:   { titulo, detalle, sub[] }  (detalle y sub opcionales) ║
+// ╚══════════════════════════════════════════════════════════════════╝
+
+const CONTENIDO = {
+
+  paginaTitulo: "GOE Admin — Ayuda",
+
+  header: {
+    eyebrow:   "Ayuda · GOE Admin v1.5",
+    titulo:    "GOE <span>Admin</span>",
+    subtitulo: "Qué hacer primero en cada módulo, paso a paso",
+  },
+
+  // ── Resumen: el orden general ───────────────────────────────────
+  resumen: {
+    labelSeccion: "Resumen · Dejar una obra andando",
+    parrafo: "GOE Admin es la administración de todo el stack. Lo usa <b>solo el admin global</b> (goecdg@gmail.com), desde la computadora. Entrás con un <b>código que llega por mail</b>. El orden para dejar una obra lista en una app es siempre el mismo:",
+    pasos: [
+      { titulo: "Cargá las personas",              ir: "personas", detalle: "Nombre, mail y chat_id de Telegram. Sin persona no hay a quién darle acceso." },
+      { titulo: "Creá la obra",                    ir: "obras",    detalle: "Código, nombre corto y estado." },
+      { titulo: "Tildá las apps de la obra",       ir: "obras",    detalle: "LO, CO, BDC o PreKOM. LO y PreKOM reciben su Plantilla al tildarlas." },
+      { titulo: "Agregá los miembros con su perfil", ir: "obras",  detalle: "En la misma ficha de la obra, una pestaña por app." },
+      { titulo: "Configurá la obra en cada app",   ir: "lo",       detalle: "Pestañas LO, CO, BDC y PreKOM: lo propio de cada app en esa obra." },
+      { titulo: "Probá entrando a la app",         detalle: "Con el mail de un miembro: tiene que ver la obra con su perfil." },
+    ],
+  },
+
+  // ── Reglas que valen en todas las pantallas ─────────────────────
+  reglas: {
+    labelSeccion: "Cómo funciona en todas las pantallas",
+    items: [
+      { icon: "🟨", titulo: "Lo cambiado se ve en amarillo", texto: "Cada campo o fila que tocaste queda resaltado hasta que guardes. Las filas nuevas, en verde; las que se quitan, tachadas." },
+      { icon: "💾", titulo: "Nada se guarda solo",          texto: "Abajo está la barra <b>N cambios sin guardar</b>. <b>Guardar cambios</b> muestra un resumen para confirmar; <b>Descartar</b> vuelve a lo guardado." },
+      { icon: "🚪", titulo: "Salir con cambios pregunta",   texto: "Si cambiás de pestaña u obra con algo sin guardar, pide confirmar antes de descartar." },
+      { icon: "♻️", titulo: "Desactivar, no borrar",        texto: "Lo que ya usan los datos (códigos, IDs, valores en uso) no se borra ni se renombra: se destilda <b>Activo</b> y deja de ofrecerse para cargas nuevas." },
+    ],
+  },
+
+  // ── Módulos, en el orden en que conviene hacerlos ───────────────
+  modulos: [
+    {
+      id: "personas", icon: "👤", nombre: "Personas",
+      para: "Quién es quién: nombre, mails y Telegram. Es lo primero.",
+      antes: [ "Nada: es el punto de partida." ],
+      pasos: [
+        { titulo: "+ Nueva", detalle: "Completá <b>Nombre y apellido</b> (obligatorio)." },
+        { titulo: "Mails", detalle: "Escribí el mail y <b>+ Agregar mail</b>. Necesita al menos uno.",
+          sub: [ "Puede tener varios: con cualquiera entra como la misma persona.",
+                 "Marcá cuál es el <b>principal</b> (el que se muestra).",
+                 "Un mail no puede estar en dos personas." ] },
+        { titulo: "Chat_id de Telegram", detalle: "Cargalo si va a recibir avisos (PdC de LO, ClimaObra). Sin chat_id, los avisos le llegan por mail." },
+        { titulo: "Apps", detalle: "Tildá <b>entra</b> en cada app que use. No hace falta si después le das acceso a una obra: se habilita sola." },
+        { titulo: "Guardar cambios", detalle: "Revisá el resumen y confirmá." },
+        { titulo: "Accesos (solo lectura)", detalle: "Al final de la ficha ves sus obras y perfiles. Se editan en la ficha de cada obra: tocá el nombre de la obra para ir." },
+      ],
+      cuidado: [
+        "El usuario de acceso se crea solo la primera vez que la persona pide el código: no hay que darlo de alta en Supabase.",
+        "Destildar <b>activa</b> le quita el acceso a todas las apps de una vez (sus accesos se conservan para reactivarla).",
+        "Quitar un mail: con ese mail ya no puede entrar.",
+        "El admin global no se desactiva y entra a todas las apps y obras sin figurar como miembro.",
+      ],
+    },
+    {
+      id: "obras", icon: "🏗️", nombre: "Obras",
+      para: "La obra común a todas las apps: datos, apps tildadas y miembros.",
+      antes: [ "Las personas que van a ser miembros ya cargadas en <b>Personas</b>." ],
+      pasos: [
+        { titulo: "+ Nueva", detalle: "<b>Código</b> y <b>nombre corto</b> son obligatorios. Elegí el <b>estado</b>: Oferta, Activa, Cerrada o Archivada.",
+          sub: [ "Lo demás es opcional: cliente, nombre largo, ubicación, dirección, fechas previstas y reales, observaciones." ] },
+        { titulo: "Apps", detalle: "Tildá las apps que usa la obra: <b>LO</b>, <b>CO</b>, <b>BDC</b>, <b>PreKOM</b>.",
+          sub: [ "LO y PreKOM reciben su <b>Plantilla</b> (tipos, catálogos) en el momento de tildarlas.",
+                 "BDC necesita después su carpeta de Drive; CO, su ubicación y umbrales." ] },
+        { titulo: "Miembros", detalle: "Aparece una pestaña por cada app tildada. En cada una:",
+          sub: [ "Elegí la persona en <b>+ Agregar persona…</b>, elegí el perfil y <b>Agregar</b>.",
+                 "Perfiles: <b>ver</b> (solo lectura), <b>editar</b> (carga), <b>administrar</b>; en LO además <b>rac</b> (editar + config de su obra + avisos del PdC).",
+                 "El chip <b>se habilita en …</b> avisa que al guardar también se le abre la entrada a esa app." ] },
+        { titulo: "Guardar cambios", detalle: "Un solo resumen con datos, apps y miembros." },
+      ],
+      cuidado: [
+        "El código se puede cambiar después (todo está unido por un ID interno), pero el nuevo se ve en todas las apps.",
+        "Destildar una app no borra nada: la obra queda <b>inactiva</b> en esa app y se puede volver a activar.",
+        "La Plantilla se copia al tildar: cambiar la Plantilla después no toca las obras que ya la tienen.",
+        "Usá el buscador y el filtro de estado de la lista para encontrar la obra.",
+      ],
+    },
+    {
+      id: "lo", icon: "📖", nombre: "LO · LibroObra",
+      para: "Tipos de documento, etiquetas, Parte de Contrato (PdC) y avisos de cada obra.",
+      antes: [ "La obra con <b>LO</b> tildado en Obras → Apps.",
+               "Para los avisos del PdC: el RAC con perfil <b>rac</b> en Obras → Miembros → LO, y su chat_id en Personas." ],
+      pasos: [
+        { titulo: "Elegí la obra en la lista", detalle: "No la <b>📋 Plantilla</b>: la Plantilla es solo lo que reciben las obras nuevas." },
+        { titulo: "Tipos", detalle: "Los tipos de documento (OS, NP, RM, CE…).",
+          sub: [ "Por tipo: descripción, dígitos del número (1 a 10), requiere respuesta, plazo en días, orden, activo.",
+                 "<b>+ Agregar tipo</b>: código de hasta 6 letras o números (ej. CD).",
+                 "Plazo vacío con \"requiere respuesta\" = queda sin plazo." ] },
+        { titulo: "Etiquetas", detalle: "Escribí la etiqueta y <b>+ Agregar etiqueta</b>. Para dejar de usar una, destildá <b>Activa</b>." },
+        { titulo: "PdC", detalle: "Primero los <b>tipos del parte</b>, después sus <b>valores</b>.",
+          sub: [ "Por tipo: nombre, ayuda, orden, múltiple, activo. Para usar menos tipos en la obra, destildá <b>Activo</b>.",
+                 "<b>Valores ›</b> abre los valores de ese tipo: impacto (0 a 3), responsable, obs. obligatoria, orden, activo.",
+                 "<b>+ Agregar tipo</b> nace con su valor \"Sin novedad\"; <b>+ Agregar valor</b> suma uno al tipo elegido." ] },
+        { titulo: "Avisos y calendario", detalle: "Lo último, cuando la obra ya está lista.",
+          sub: [ "<b>Fecha de inicio del parte</b>: desde ese día se exige el PdC (vacía = sin faltantes).",
+                 "<b>Días hacia atrás</b> (1 a 60), <b>avisos activos</b>, <b>horarios</b> (ej. 11:00,15:00,18:00) y <b>días con aviso</b>.",
+                 "<b>Calendario activo</b> y <b>calendario desde</b>.",
+                 "El ID del calendario y la carpeta de Drive los completa LO Sync: acá solo se ven." ] },
+        { titulo: "Guardar cambios", detalle: "LO lo toma la próxima vez que se abre la obra; LO Sync, en su próxima corrida." },
+      ],
+      cuidado: [
+        "Los códigos (OS), los nombres de etiqueta y los IDs del PdC (T01, T01-V02) no se cambian: los usan los datos. Se desactivan.",
+        "Cada tipo del PdC activo necesita exactamente <b>un</b> valor \"sin novedad\" activo (lo usa \"Todo sin novedad\").",
+        "El impacto y el responsable de un valor valen para los registros nuevos; los ya cargados no cambian.",
+        "Al guardar <b>avisos activos</b>, empiezan a llegar recordatorios a los RAC en los horarios indicados.",
+      ],
+    },
+    {
+      id: "co", icon: "🌦️", nombre: "CO · ClimaObra",
+      para: "Ubicación, jornada, umbrales de día perdido y avisos por persona.",
+      antes: [ "La obra con <b>CO</b> tildado en Obras → Apps.",
+               "Los miembros cargados en Obras → Miembros → CO (los avisos se configuran por persona)." ],
+      pasos: [
+        { titulo: "Elegí la obra en la lista", detalle: "Si dice <b>sin configurar</b>, todavía no aparece en ClimaObra." },
+        { titulo: "Obra · Ubicación", detalle: "Latitud y longitud, de una de estas formas:",
+          sub: [ "Tocá el mapa donde está la obra.",
+                 "O en Google Maps: clic derecho en el lugar → copiar coordenadas → pegalas en <b>Pegar coordenadas de Google Maps</b>." ] },
+        { titulo: "Obra · Jornada", detalle: "Hora de inicio y de fin, y el tilde <b>Activa en ClimaObra</b>." },
+        { titulo: "Obra · Umbrales", detalle: "Lluvia (mm en el día), viento medio, ráfaga, calor y helada.",
+          sub: [ "Vacío = no alerta por esa causa. Cargá al menos uno.",
+                 "Cualquier umbral que se cruce alcanza para el aviso." ] },
+        { titulo: "Avisos", detalle: "Por persona: tildá <b>recibe</b>, elegí el canal (mail, Telegram o los dos) y la hora (3 a 23)." },
+        { titulo: "Guardar cambios", detalle: "CO Sync lo usa en la próxima consulta (3:00)." },
+        { titulo: "Ocultas (cuando haga falta)", detalle: "Las decisiones de día perdido que se quitaron en ClimaObra: <b>Restaurar</b> la vuelve a mostrar." },
+      ],
+      cuidado: [
+        "Una persona con el chip <b>sin acceso</b> no recibe aunque esté tildada: dale acceso en Obras → Miembros → CO.",
+        "Telegram sin chat_id → el aviso va por mail.",
+        "Cada persona recibe un solo mensaje por hora con todas sus obras.",
+        "Destildar <b>Activa</b>: CO Sync deja de consultarla. Restaurar una decisión oculta la que estaba visible ese día.",
+      ],
+    },
+    {
+      id: "bdc", icon: "🔎", nombre: "BDC · Buscador Documental",
+      para: "General de BDC (una vez) y la carpeta de Drive de cada obra.",
+      antes: [ "La obra con <b>BDC</b> tildado en Obras → Apps.",
+               "La carpeta de la obra en Drive, de la cuenta goecdg o compartida con ella." ],
+      pasos: [
+        { titulo: "General (una sola vez, vale para todas las obras)", detalle: "Elegí <b>⚙️ General</b> en la lista:",
+          sub: [ "<b>Máscaras genéricas</b>: cómo reconocer el código al principio del nombre del PDF.",
+                 "<b>Marcas manuales</b>: las opciones de \"Acción\" para documentos vacíos.",
+                 "<b>Informe semanal</b>: carpeta donde BDC Sync deja el Doc del domingo y tope del detalle." ] },
+        { titulo: "Obra · Carpeta de Drive", detalle: "Elegí la obra y pegá el link de la carpeta raíz (o su ID). Abajo muestra el ID reconocido y un link para abrirla." },
+        { titulo: "Obra · Máscaras (opcional)", detalle: "Solo si la obra usa códigos propios.",
+          sub: [ "<b>+ Agregar máscara</b>: bloques mín./máx., largo mín./máx. y separador.",
+                 "Probala escribiendo un nombre de archivo en <b>Probar con un nombre de archivo</b>." ] },
+        { titulo: "Guardar cambios", detalle: "BDC Sync lo toma en la próxima carga." },
+      ],
+      cuidado: [
+        "Sin carpeta, la pantalla de Carga de BDC avisa que falta: la obra no se puede indexar.",
+        "Cambiar la carpeta o una máscara no reindexa: vale para las cargas nuevas.",
+        "Se prueban primero las máscaras de la obra y después las genéricas.",
+        "Una marca no se cambia una vez creada: se desactiva. Etiquetas y omisiones siguen en la pantalla de Carga de BDC.",
+      ],
+    },
+    {
+      id: "pk", icon: "🗂️", nombre: "PreKOM",
+      para: "Árbol de Contenido y catálogos de Listas de cada obra.",
+      antes: [ "La obra con <b>PreKOM</b> tildado en Obras → Apps (recibe los catálogos de la Plantilla)." ],
+      pasos: [
+        { titulo: "Elegí la obra en la lista", detalle: "La <b>📋 Plantilla</b> es solo para los catálogos que reciben las obras nuevas." },
+        { titulo: "Árbol: arrancá por la estructura", detalle: "Si está vacío, tenés dos caminos:",
+          sub: [ "<b>Copiar estructura</b> desde otra obra: solo puntos, niveles y títulos. Se guarda en el momento.",
+                 "O agregá nodos a mano: punto (ej. 8.5.1) + título → <b>+ Agregar nodo</b>. El nivel se completa solo." ] },
+        { titulo: "Árbol: ajustá", detalle: "Cambiá punto, nivel o título. <b>Ocultar</b> saca el nodo de PreKOM sin borrarlo." },
+        { titulo: "Ocultos", detalle: "<b>Restaurar</b> vuelve a mostrar el nodo con su Resumen, color y comentarios." },
+        { titulo: "Catálogos", detalle: "Sector, Estado, Crítico, Asignado, Marca, Unidad y Moneda.",
+          sub: [ "Por valor: texto, color, orden, activo; <b>cierra</b> (en Estado) y <b>crítico</b> (en Crítico).",
+                 "<b>Traer de la Plantilla lo que falta</b> suma lo que la obra no tiene, sin pisar nada." ] },
+        { titulo: "Guardar cambios", detalle: "Se ve la próxima vez que se abre la obra en PreKOM." },
+      ],
+      cuidado: [
+        "El Resumen y el color de cada nodo se editan en PreKOM, no acá.",
+        "El punto es único entre los visibles. Cambiar un punto conserva su Resumen y comentarios.",
+        "Para copiar estructura o traer de la Plantilla, primero guardá o descartá los cambios.",
+        "Un valor de catálogo en uso no se borra: se desactiva. Renombrarlo lo cambia en todas las filas. Sector y Estado necesitan al menos un valor activo.",
+      ],
+    },
+    {
+      id: "mdt", icon: "📝", nombre: "MdT · Mesa de Trabajo",
+      para: "Usuarios y listas de MdT. No usa obras.",
+      antes: [ "Nada: es independiente de las obras." ],
+      pasos: [
+        { titulo: "Usuarios", detalle: "<b>+ Agregar</b>: mail, nombre y activo. Quién puede entrar a MdT." },
+        { titulo: "Listas", detalle: "Una pestaña por lista:",
+          sub: [ "<b>Etiquetas</b> y <b>Marcas</b> (con color).",
+                 "<b>Tareas</b> (con su etiqueta).",
+                 "<b>Herramientas</b>: emoji, nombre y link (empieza con https://)." ] },
+        { titulo: "Orden", detalle: "Arrastrá las filas desde <b>⋮⋮</b> y tocá <b>Guardar orden</b>." },
+        { titulo: "Config", detalle: "Solo se cambia el valor de cada clave." },
+      ],
+      cuidado: [
+        "Acá cada ítem se guarda al confirmar su ventana (no hay barra de cambios).",
+        "Los usuarios no se borran: se desactivan.",
+        "Las notas ya cargadas guardan el texto de la etiqueta o marca: borrar o renombrar no las cambia.",
+        "Cambiar <b>calendar_id</b> manda los eventos nuevos a otro calendario.",
+      ],
+    },
+    {
+      id: "mail", icon: "✉️", nombre: "Mail del código",
+      para: "El nombre de cada app en el mail con el código de acceso.",
+      antes: [ "La dirección de la PWA cargada también en Supabase → Authentication → URL Configuration → <b>Redirect URLs</b>." ],
+      pasos: [
+        { titulo: "Completá cada app", detalle: "<b>Dirección de la PWA</b> (https://goeapp.github.io/…/) y <b>nombre en el mail</b> (en MAYÚSCULAS, de 2 a 30 caracteres)." },
+        { titulo: "Guardar cambios", detalle: "La plantilla se arma con lo guardado." },
+        { titulo: "Generar plantilla", detalle: "Muestra el asunto, el cuerpo y una vista previa por app." },
+        { titulo: "Pegala en Supabase", detalle: "Authentication → Emails → Templates:",
+          sub: [ "<b>Magic link</b>: en Subject pegá el asunto; en Body (pestaña Source) reemplazá todo por el cuerpo → <b>Save</b>.",
+                 "Repetí lo mismo en <b>Confirm sign up</b> (la primera vez que alguien pide código llega por ahí)." ] },
+      ],
+      cuidado: [
+        "Una app sin dirección o sin nombre dice <b>GOEAPP</b> en el mail.",
+        "El asunto es fijo para todas las apps: \"[código] es tu código de acceso\".",
+        "Si cambiás una dirección o un nombre, hay que volver a generar y pegar la plantilla.",
+      ],
+    },
+  ],
+
+  footer: {
+    izquierda: "GOE Admin — Ayuda · v1.0 (para GOE Admin v1.5)",
+    derecha:   "Octubre 2026",
+  },
+};
+
+// ╔══════════════════════════════════════════════════════════════════╗
+// ║              MOTOR DE RENDER — no modificar                     ║
+// ╚══════════════════════════════════════════════════════════════════╝
+(function render() {
+  const C = CONTENIDO, $ = id => document.getElementById(id);
+
+  document.title = C.paginaTitulo;
+  $('hdr-eyebrow').innerHTML  = C.header.eyebrow;
+  $('hdr-title').innerHTML    = C.header.titulo;
+  $('hdr-subtitle').innerHTML = C.header.subtitulo;
+
+  // Índice
+  $('indice').innerHTML = `<a href="#sec-resumen"><span class="n">0</span>Resumen</a>` +
+    C.modulos.map((m, i) => `<a href="#mod-${m.id}"><span class="n">${i + 1}</span>${m.icon} ${m.nombre.split(' · ')[0]}</a>`).join('');
+
+  // Resumen
+  const r = C.resumen;
+  $('sec-resumen').innerHTML = `
+    <p class="section-label">${r.labelSeccion}</p>
+    <div class="intro-card"><p>${r.parrafo}</p>
+      <div class="flow">${r.pasos.map((p, i) => `
+        <div class="flow-step"><div class="step-num">${i + 1}</div>
+          <div class="step-body">
+            <div class="step-title">${p.titulo}${p.ir ? `<a href="#mod-${p.ir}">ver ›</a>` : ''}</div>
+            ${p.detalle ? `<div class="step-detail">${p.detalle}</div>` : ''}
+          </div></div>`).join('')}
+      </div></div>`;
+
+  // Reglas
+  const g = C.reglas;
+  $('sec-reglas').innerHTML = `
+    <p class="section-label">${g.labelSeccion}</p>
+    <div class="regla-grid">${g.items.map(t => `
+      <div class="regla"><div class="regla-icon">${t.icon}</div>
+        <div class="regla-title">${t.titulo}</div><div class="regla-text">${t.texto}</div></div>`).join('')}
+    </div>`;
+
+  // Módulos
+  $('sec-modulos').innerHTML = C.modulos.map((m, i) => `
+    <section class="section" id="mod-${m.id}">
+      <p class="section-label">Módulo ${i + 1}</p>
+      <div class="mod">
+        <div class="mod-head"><span class="mod-n">${i + 1}</span><span class="mod-icon">${m.icon}</span>
+          <div><div class="mod-name">${m.nombre}</div><div class="mod-para">${m.para}</div></div></div>
+        <div class="mod-body">
+          ${m.antes && m.antes.length ? `<div class="bloque"><div class="bloque-tit">Antes de empezar</div>
+            <ul class="antes">${m.antes.map(a => `<li>${a}</li>`).join('')}</ul></div>` : ''}
+          <div class="bloque"><div class="bloque-tit">Pasos</div>
+            <ol class="pasos">${m.pasos.map(p => `<li><div>
+              <div class="paso-tit">${p.titulo}</div>
+              ${p.detalle ? `<div class="paso-det">${p.detalle}</div>` : ''}
+              ${p.sub && p.sub.length ? `<ul class="sub">${p.sub.map(s => `<li>${s}</li>`).join('')}</ul>` : ''}
+            </div></li>`).join('')}</ol></div>
+          ${m.cuidado && m.cuidado.length ? `<div class="bloque"><div class="bloque-tit">Cuidado</div>
+            <div class="cuidado"><ul>${m.cuidado.map(c => `<li>${c}</li>`).join('')}</ul></div></div>` : ''}
+        </div>
+      </div>
+      <a class="arriba" href="#arriba">↑ Volver al índice</a>
+    </section>`).join('');
+
+  // Footer
+  $('pie').innerHTML = `<div>${C.footer.izquierda}</div><div>${C.footer.derecha}</div>`;
+})();
+</script>
+</body>
+</html>
