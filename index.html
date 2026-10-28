@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GOE Admin</title>
 <!--
-  index_admin_v1_6.html — GOE Admin v1.6 (28-oct-2026)
+  index_admin_v1_7.html — GOE Admin v1.7 (28-oct-2026)
   Repo: goeapp/admin → https://goeapp.github.io/admin/ (subir como index.html)
 
   Administración del stack sobre Supabase (proyecto PWAgoe), solo para el admin global.
@@ -21,6 +21,7 @@
   · WC:       WebCam DMS v5: cámaras (código, nombre, orden, activa), el celular emparejado de cada una con su
               configuración (arranque, cámara inicial, calidad, reloj, clima, calendario), Emparejar (código de
               6 dígitos con cuenta regresiva) / Desemparejar, registro (wc_log) y 📅 Calendarios (dirección iCal + Probar) (v1.6)
+              + 📻 Radios (buscador de Radio Browser, Probar, orden, activa) y el tilde Radio por celular (v1.7)
   · Mail:     nombre de cada app en el mail del código (goe_apps.nombre_mail) + generador de la plantilla v2.0
   · Login por código (Supabase Auth), igual que MdT v15.0, con sesión propia (admin-sb-auth).
   · Todos los cambios se guardan con botón y un resumen para confirmar.
@@ -32,7 +33,8 @@
                         + pk_esquema_v9_0_0.sql + pk_datos_v9_0_0.sql (tablas pk_, goe_apps.nombre_mail)
                         + pk_listas_esquema_v9_1_0.sql + pk_listas_datos_v9_1_0.sql (catálogos de Listas)
                         + co_esquema_v17_0_1.sql + co_datos_v17_0_0.sql (tablas co_, app co)
-                        + wc_esquema_v5_0_0.sql (tablas wc_, app wc) + Edge Function wc-calendario.
+                        + wc_esquema_v5_0_0.sql (tablas wc_, app wc) + Edge Function wc-calendario
+                        + wc_radios_v5_1_0.sql (tabla wc_radios, wc_dispositivos.mostrar_radio).
   Ayuda: ayuda_admin.html en el mismo repo (botón "?" del encabezado).
 
   Changelog
@@ -62,6 +64,10 @@
          Botón "?" en el encabezado: abre ayuda_admin.html.
          CO: el mapa ya no queda encima de las ventanas de confirmación; las coordenadas pegadas de Google Maps se
          redondean a 7 decimales (como al tocar el mapa).
+  v1.7 — WC → 📻 Radios (WebCam v5.1.0): las radios fijas del panel de casa, las mismas para todos los celulares.
+         Buscador de Radio Browser (radio-browser.info, sin clave) con "Solo Argentina", marca ✓ funciona en la app
+         (link https y último chequeo OK) o ✗ no funciona; ▶ Probar suena en la compu; + Agregar; nombre editable;
+         orden arrastrando ⋮⋮ (como MdT); activa; Quitar. Ficha del celular: tilde "Radio" (mostrar_radio).
 -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
@@ -254,6 +260,9 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
 .wc-cod-vence { font-size: .82rem; color: var(--muted); font-weight: 600; }
 .wc-cod-vence.vencido { color: var(--danger); }
 .wc-cod-ok { margin-top: 6px; font-size: .95rem; color: var(--ok-fg); background: var(--ok-bg); border-radius: 999px; display: inline-block; padding: 4px 14px; }
+.wc-rlogo { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; background: #f1f5f9; display: inline-grid; place-items: center; font-size: .7rem; font-weight: 800; color: #fff; vertical-align: middle; }
+.wc-rurl { font-family: monospace; font-size: .72rem; color: var(--muted); max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btn-icono.wc-sonando { border-color: var(--accent); color: var(--accent); background: #fff7ed; font-weight: 600; }
 .hdr-ayuda { width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(255,255,255,.3); color: rgba(255,255,255,.8); display: inline-flex; align-items: center; justify-content: center; text-decoration: none; font-weight: 600; font-size: .9rem; }
 .hdr-ayuda:hover { border-color: var(--accent); color: #fff; background: rgba(217,119,6,.18); }
 /* ── MODAL ─────────────────────────────────────────────── */
@@ -478,7 +487,7 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
 /* ════════════════════════════════════════════════════════
    CONFIGURACIÓN
 ════════════════════════════════════════════════════════ */
-const VERSION_UI     = 'v1.6';
+const VERSION_UI     = 'v1.7';
 const REDIRECT_MAIL  = 'https://goeapp.github.io/admin/';   // la plantilla del mail lo usa para poner "GOE ADMIN"
 const SUPABASE_URL   = 'https://uhuftsxrzwhmvzygcuvp.supabase.co';
 const SUPABASE_KEY   = 'sb_publishable_TCibRAnzgaDIbn_MIirw6w_FltKG8X3';
@@ -572,6 +581,7 @@ function textoError(err) {
   if (/pk_lista_filas_.*fkey|foreign key/.test(m)) return 'Ese valor se usa en filas de Listas: no se puede borrar (desactivalo).';
   if (/pk_contenido_punto_check/.test(m)) return 'El punto va con números o letras separados por puntos (ej. 8.5.1).';
   if (/goe_apps_nombre_mail_chk/.test(m)) return 'El nombre del mail va en MAYÚSCULAS, de 2 a 30 caracteres, sin comillas ni llaves.';
+  if (/wc_radios_stream_url_check/.test(m)) return 'El link del audio de la radio tiene que ser https.';
   if (/wc_camaras_codigo_key/.test(m)) return 'Ya existe una cámara con ese código.';
   if (/wc_camaras_codigo_check/.test(m)) return 'El código va en MAYÚSCULAS y números, de 2 a 12 caracteres.';
   if (/No existe una cámara activa/.test(m)) return 'La cámara está inactiva: activala para poder emparejar.';
@@ -727,7 +737,7 @@ async function puedoSalir() {
 async function irVista(v) {
   if (v === st.vista && st.appIniciada) return;
   if (!(await puedoSalir())) return;
-  st.obraEd = null; st.personaEd = null; st.mdtOrden = null; st.loEd = null; st.bdcEd = null; st.pkEd = null; st.mailEd = null; st.coEd = null; st.wcEd = null;
+  st.obraEd = null; st.personaEd = null; st.mdtOrden = null; st.loEd = null; st.bdcEd = null; st.pkEd = null; st.mailEd = null; st.coEd = null; st.wcEd = null; wcPararAudio();
   st.vista = v;
   document.querySelectorAll('.hdr-nav button').forEach(b => b.classList.toggle('activa', b.dataset.vista === v));
   document.querySelectorAll('.vista').forEach(s => s.classList.toggle('activa', s.id === 'vista-' + v));
@@ -3061,20 +3071,22 @@ const WC_CAMPOS_DISP = [
   { k: 'camara_inicial', t: 'Cámara inicial' }, { k: 'calidad', t: 'Calidad' },
   { k: 'mostrar_reloj', t: 'Reloj', b: true }, { k: 'mostrar_clima', t: 'Clima', b: true },
   { k: 'mostrar_calendario', t: 'Calendario', b: true }, { k: 'calendario_id', t: 'Calendario asignado' },
+  { k: 'mostrar_radio', t: 'Radio', b: true },
 ];
 const WC_CALIDAD = { alta: 'Alta · 1280×720 · 24 fps', media: 'Media · 960×540 · 15 fps', baja: 'Baja · 640×360 · 10 fps' };
 const WC_INICIAL = { trasera: 'Trasera', frontal: 'Frontal' };
 const WC_ESTADO  = { inactivo: 'cámara detenida', esperando: 'esperando visor', transmitiendo: 'transmitiendo' };
 const WC_ROL     = { tx: 'Celular', rx: 'Visor', admin: 'Admin', edge: 'Calendario' };
-const W = { camaras: [], disp: [], cals: [] };
+const W = { camaras: [], disp: [], cals: [], radios: [] };
 
 async function cargarWc() {
-  const [camaras, disp, cals] = await Promise.all([
+  const [camaras, disp, cals, radios] = await Promise.all([
     q(sb.from('wc_camaras').select('*').order('orden').order('nombre')),
     q(sb.from('wc_dispositivos').select('*')),
     q(sb.from('wc_calendarios').select('*').order('nombre')),
+    q(sb.from('wc_radios').select('*').order('orden').order('nombre')),
   ]);
-  Object.assign(W, { camaras, disp, cals });
+  Object.assign(W, { camaras, disp, cals, radios });
 }
 const wcCam  = id => W.camaras.find(c => c.id === id);
 const wcDisp = camId => W.disp.find(d => d.camara_id === camId);
@@ -3102,7 +3114,7 @@ async function abrirVistaWc() {
   $('wc-ficha').innerHTML = '<div class="cargando"><div class="spinner"></div>Cargando…</div>';
   try { await cargarWc(); }
   catch (e) { console.error('[cargarWc]', e); $('wc-ficha').innerHTML = `<div class="ficha-vacia" style="color:var(--err-fg)">No se pudo cargar: ${esc(textoError(e))}</div>`; return; }
-  const sel = st.wcSel && (st.wcSel === WC_CAL || wcCam(st.wcSel)) ? st.wcSel : (W.camaras[0] ? W.camaras[0].id : WC_CAL);
+  const sel = st.wcSel && (st.wcSel === WC_CAL || st.wcSel === WC_RAD || wcCam(st.wcSel)) ? st.wcSel : (W.camaras[0] ? W.camaras[0].id : WC_CAL);
   abrirWc(sel);
 }
 function renderListaWc() {
@@ -3112,7 +3124,10 @@ function renderListaWc() {
   $('wc-lista').innerHTML = `
     <div class="item ${sel === WC_CAL ? 'sel' : ''}" data-wc="${WC_CAL}">
       <div class="item-tit">📅 Calendarios</div>
-      <div class="item-sub">${W.cals.length ? `${W.cals.length} cargado${W.cals.length > 1 ? 's' : ''} · ${activos} activo${activos === 1 ? '' : 's'}` : 'ninguno todavía'}</div></div>` + nueva +
+      <div class="item-sub">${W.cals.length ? `${W.cals.length} cargado${W.cals.length > 1 ? 's' : ''} · ${activos} activo${activos === 1 ? '' : 's'}` : 'ninguno todavía'}</div></div>
+    <div class="item ${sel === WC_RAD ? 'sel' : ''}" data-wc="${WC_RAD}">
+      <div class="item-tit">📻 Radios</div>
+      <div class="item-sub">${W.radios.length ? `${W.radios.filter(x => x.activa).length} activa${W.radios.filter(x => x.activa).length === 1 ? '' : 's'} · las mismas en todos los celulares` : 'ninguna todavía'}</div></div>` + nueva +
     (W.camaras.length ? W.camaras.map(c => {
       const e = wcEstado(c), d = wcDisp(c.id);
       return `<div class="item ${sel === c.id ? 'sel' : ''}" data-wc="${c.id}">
@@ -3138,9 +3153,16 @@ async function nuevaCamaraWc() {
 function modeloDisp(d) {
   return d ? { nombre: d.nombre || '', autoarranque: !!d.autoarranque, camara_inicial: d.camara_inicial, calidad: d.calidad,
                mostrar_reloj: !!d.mostrar_reloj, mostrar_clima: !!d.mostrar_clima, mostrar_calendario: !!d.mostrar_calendario,
-               calendario_id: d.calendario_id || '' } : null;
+               calendario_id: d.calendario_id || '', mostrar_radio: d.mostrar_radio !== false } : null;
 }
 function abrirWc(id) {
+  wcPararAudio();
+  if (id === WC_RAD) {
+    st.wcSel = WC_RAD;
+    const orig = wcRadModelo();
+    st.wcEd = { id: WC_RAD, orig, w: clonar(orig), busq: { txt: '', ar: true, res: null, cargando: false, error: '' } };
+    renderListaWc(); renderFichaWcRad(); return;
+  }
   if (id === WC_CAL) {
     st.wcSel = WC_CAL;
     const orig = { cals: W.cals.map(k => ({ id: k.id, nombre: k.nombre, ical_url: k.ical_url, activo: !!k.activo })) };
@@ -3257,11 +3279,11 @@ function renderWcCelular() {
       <div class="campo">${chk('mostrar_reloj', 'Reloj')}</div>
       <div class="campo">${chk('mostrar_clima', 'Clima')}</div>
       <div class="campo">${chk('mostrar_calendario', 'Calendario del día')}</div>
-      <div class="campo"></div>
+      <div class="campo">${chk('mostrar_radio', 'Radio')}</div>
       <div class="campo c2"><label>Calendario asignado</label>${sel('calendario_id', cals)}</div>
       <div class="campo c2"><label>&nbsp;</label><div>${avisoCal}</div></div>
     </div>
-    <div class="nota">La calidad baja ayuda si el visor se ve cortado por 4G. Los calendarios se cargan en <b>📅 Calendarios</b>.</div>
+    <div class="nota">La calidad baja ayuda si el visor se ve cortado por 4G. Los calendarios se cargan en <b>📅 Calendarios</b> y las radios en <b>📻 Radios</b>${W.radios.some(x => x.activa) ? '' : ' (todavía no hay ninguna activa: la barra de radio no aparece)'}.</div>
     <h3 class="wc-h">Emparejamiento</h3>
     <div class="wc-acciones">
       <button class="btn sec" id="wc-emparejar" type="button" ${c.activa ? '' : 'disabled title="La cámara está inactiva"'}>Emparejar otro celular</button>
@@ -3297,6 +3319,7 @@ async function renderWcRegistro() {
 function cambiosWc() {
   const ed = st.wcEd; if (!ed) return [];
   if (ed.id === WC_CAL) return cambiosWcCal();
+  if (ed.id === WC_RAD) return cambiosWcRad();
   const out = [], o = ed.orig, w = ed.w;
   const txt = (c, v) => c.b ? (v ? 'sí' : 'no') : (c.k === 'calendario_id' ? (v ? wcCalNombre(v) : '—')
     : c.k === 'calidad' ? (v || '—') : c.k === 'camara_inicial' ? (WC_INICIAL[v] || v) : (vacio(v) ? '—' : v));
@@ -3334,6 +3357,7 @@ function validarWc() {
 async function guardarWc() {
   const ed = st.wcEd;
   if (ed.id === WC_CAL) return guardarWcCal();
+  if (ed.id === WC_RAD) return guardarWcRad();
   const cambios = cambiosWc(); if (!cambios.length) return;
   const err = validarWc(); if (err) { if (ed.tab !== 'celular' || /cámara|código|orden/i.test(err)) ed.tab = 'camara'; renderFichaWc(); avisar('No se puede guardar', esc(err)); return; }
   if (!(await confirmar(ed.nueva ? 'Crear cámara' : 'Guardar cámara · ' + esc(ed.orig.cam.nombre), cambios, { textoOk: ed.nueva ? 'Crear cámara' : 'Guardar' }))) return;
@@ -3352,7 +3376,7 @@ async function guardarWc() {
         await q(sb.from('wc_dispositivos').update({
           nombre: x.nombre.trim(), autoarranque: !!x.autoarranque, camara_inicial: x.camara_inicial, calidad: x.calidad,
           mostrar_reloj: !!x.mostrar_reloj, mostrar_clima: !!x.mostrar_clima, mostrar_calendario: !!x.mostrar_calendario,
-          calendario_id: x.calendario_id || null, actualizado_en: new Date().toISOString() }).eq('auth_uid', d.auth_uid));
+          calendario_id: x.calendario_id || null, mostrar_radio: !!x.mostrar_radio, actualizado_en: new Date().toISOString() }).eq('auth_uid', d.auth_uid));
       }
     }
     toast(ed.nueva ? 'Cámara creada' : 'Cambios guardados' + (o.disp ? ': el celular ya los tiene' : ''));
@@ -3572,6 +3596,240 @@ async function probarWcCal(k) {
     html = `<div class="err">No se pudo leer: ${esc(msg)}</div><div class="nota">Revisá que la dirección sea la <b>secreta en formato iCal</b> (termina en <i>basic.ics</i>) y que la Edge Function <b>wc-calendario</b> esté publicada.</div>`;
   }
   const el = $('modal-body'); if (el && $('wc-prueba')) el.innerHTML = html;
+}
+
+/* ── 📻 Radios (v1.7) — wc_radios: las radios fijas del panel de casa (las mismas para todos los celulares).
+   Buscador: Radio Browser (radio-browser.info, catálogo comunitario, sin clave) consultado directo desde acá.
+   Solo sirven las radios con link https: el celular abre la app por https y el navegador bloquea el audio http. */
+const WC_RAD = 'radios';
+const RB_SERVIDORES = ['https://de1.api.radio-browser.info', 'https://de2.api.radio-browser.info', 'https://fi1.api.radio-browser.info', 'https://nl1.api.radio-browser.info'];
+let wcAudio = null, wcSonando = null;            // prueba de audio en la compu (una a la vez)
+
+function wcRadOrig(k) { return st.wcEd.orig.rads.find(x => x.id === k.id); }
+function wcRadModelo() {
+  return { rads: W.radios.map(r => ({ id: r.id, nombre: r.nombre, stream_url: r.stream_url, logo_url: r.logo_url || '', rb_uuid: r.rb_uuid || '', activa: !!r.activa })) };
+}
+function wcLogo(r) {
+  const nom = r.nombre || '?';
+  const ini = nom.replace(/^(FM|AM|Radio)\s+/i, '').split(/\s+/).map(w => w[0]).join('').slice(0, 3).toUpperCase();
+  let h = 0; for (const c of nom) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  const color = ['#1d4ed8', '#dc2626', '#7c3aed', '#059669', '#d97706', '#db2777', '#0891b2', '#4d7c0f'][h % 8];
+  const fb = `<span class="wc-rlogo" style="background:${color}">${esc(ini)}</span>`;
+  return r.logo_url ? `<img class="wc-rlogo" src="${esc(r.logo_url)}" alt="" referrerpolicy="no-referrer" data-fb="${esc(fb)}">` : fb;
+}
+function wcLogosFallback(raiz) { raiz.querySelectorAll('img.wc-rlogo').forEach(img => img.onerror = () => { img.outerHTML = img.dataset.fb; }); }
+function wcProbarAudio(url, nombre, boton) {
+  if (!wcAudio) {
+    wcAudio = new Audio(); wcAudio.preload = 'none';
+    wcAudio.addEventListener('error', () => { if (wcSonando) { toast('No se pudo escuchar ' + wcSonando.nombre + ': probá otra', true); wcPararAudio(); } });
+    wcAudio.addEventListener('playing', () => { if (wcSonando) toast('▶ Sonando: ' + wcSonando.nombre); });
+  }
+  if (wcSonando && wcSonando.url === url) { wcPararAudio(); return; }
+  wcPararAudio();
+  wcSonando = { url, nombre };
+  wcAudio.src = url;
+  const p = wcAudio.play(); if (p && p.catch) p.catch(e => { if (e.name !== 'AbortError' && wcSonando && wcSonando.url === url) { toast('No se pudo escuchar ' + nombre + ': probá otra', true); wcPararAudio(); } });
+  wcPintarBotonesAudio();
+}
+function wcPararAudio() {
+  if (wcAudio) { try { wcAudio.pause(); wcAudio.removeAttribute('src'); wcAudio.load(); } catch (e) { /* nada */ } }
+  wcSonando = null; wcPintarBotonesAudio();
+}
+function wcPintarBotonesAudio() {
+  document.querySelectorAll('[data-wcplay]').forEach(b => {
+    const on = !!wcSonando && wcSonando.url === b.dataset.wcplay;
+    b.textContent = on ? '■ Parar' : '▶ Probar'; b.classList.toggle('wc-sonando', on);
+  });
+}
+
+function renderFichaWcRad() {
+  const ed = st.wcEd, w = ed.w.rads;
+  const filas = w.map((k, i) => {
+    const o = wcRadOrig(k);
+    const iOrig = o ? ed.orig.rads.indexOf(o) : -1;
+    const cmb = f => o && String(o[f]) !== String(k[f]) ? 'cambiado' : '';
+    const movida = o && !k.borrar && ed.w.rads.filter(x => !x.borrar && wcRadOrig(x)).indexOf(k) !== ed.orig.rads.filter(x => w.find(y => y.id === x.id && !y.borrar)).indexOf(o);
+    const cls = !o ? 'nuevo' : k.borrar ? 'quitado' : (cmb('nombre') || cmb('activa') || movida ? 'cambiado' : '');
+    return `<tr class="${cls}" data-i="${i}" ${k.borrar ? '' : 'draggable="true"'}>
+      <td class="asa" title="Arrastrá para cambiar el orden">⋮⋮</td>
+      <td style="width:46px">${wcLogo(k)}</td>
+      <td><input class="inp ${cmb('nombre')}" data-wcr="${i}" data-k="nombre" value="${esc(k.nombre)}" maxlength="40" ${k.borrar ? 'disabled' : ''}></td>
+      <td class="wc-rurl" title="${esc(k.stream_url)}">${esc(k.stream_url)}</td>
+      <td style="width:60px"><label class="check"><input type="checkbox" data-wcr="${i}" data-k="activa" ${k.activa ? 'checked' : ''} ${k.borrar ? 'disabled' : ''}></label></td>
+      <td class="acciones">
+        <button class="btn-icono" type="button" data-wcplay="${esc(k.stream_url)}" data-nombre="${esc(k.nombre)}">▶ Probar</button>
+        ${k.borrar ? `<button class="btn-icono" type="button" data-wcrvolver="${i}">Deshacer</button>`
+          : `<button class="btn-icono peligro" type="button" data-wcrquitar="${i}">Quitar</button>`}</td></tr>`;
+  }).join('');
+  const b = ed.busq;
+  $('wc-ficha').innerHTML = `
+    <div class="ficha-scroll">
+      <div class="ficha-tit">📻 Radios <span class="chip app">WC</span></div>
+      <div class="ficha-sub">Las radios fijas del panel de casa: las mismas en todos los celulares, en este orden (de a 4 por página). Cada celular las muestra si tiene tildado <b>Radio</b> en su ficha.</div>
+      <div class="card"><h3>En el celular <span class="h3-extra nota" style="margin-top:0">${w.filter(x => !x.borrar && x.activa).length} activas · arrastrá ⋮⋮ para ordenar</span></h3>
+        ${w.length ? `<table class="tabla"><thead><tr><th></th><th></th><th style="width:230px">Nombre (como se ve)</th><th>Audio</th><th>Activa</th><th></th></tr></thead><tbody id="wc-rad-tbody">${filas}</tbody></table>`
+          : '<div class="nota">Todavía no hay radios. Buscalas abajo y tocá <b>+ Agregar</b>.</div>'}
+      </div>
+      <div class="card"><h3>Buscar en Radio Browser <span class="h3-extra nota" style="margin-top:0">catálogo comunitario gratuito · radio-browser.info</span></h3>
+        <div class="agregar-fila" style="margin-top:0">
+          <input class="inp" id="wc-rb-txt" placeholder="Nombre de la radio (ej. Mitre, La 100, Nacional)" value="${esc(b.txt)}" style="max-width:380px">
+          <label class="check"><input type="checkbox" id="wc-rb-ar" ${b.ar ? 'checked' : ''}> Solo Argentina</label>
+          <button class="btn sec" id="wc-rb-buscar" type="button">Buscar</button>
+        </div>
+        <div id="wc-rb-res">${wcResultadosHtml()}</div>
+        <div class="nota">Solo se pueden agregar las que dicen <b>✓ funciona en la app</b> (link https). Probala antes: algunas radios cambian el link y dejan de andar.</div>
+      </div>
+    </div>
+    <div class="barra-guardar">
+      <span class="estado" id="wc-estado"></span>
+      <button class="btn sec" id="wc-descartar" type="button">Descartar</button>
+      <button class="btn" id="wc-guardar" type="button">Guardar cambios</button>
+    </div>`;
+  const fic = $('wc-ficha');
+  wcLogosFallback(fic);
+  fic.querySelectorAll('[data-wcr]').forEach(el => el.oninput = el.onchange = () => {
+    const i = +el.dataset.wcr, k = w[i], f = el.dataset.k, o = wcRadOrig(k);
+    k[f] = el.type === 'checkbox' ? el.checked : el.value;
+    if (o && el.type !== 'checkbox') el.classList.toggle('cambiado', String(o[f]) !== String(k[f]));
+    if (el.type === 'checkbox') renderFichaWcRad(); else actualizarBarraWc();
+  });
+  fic.querySelectorAll('[data-wcrquitar]').forEach(x => x.onclick = () => { const i = +x.dataset.wcrquitar; if (!wcRadOrig(w[i])) w.splice(i, 1); else w[i].borrar = true; renderFichaWcRad(); });
+  fic.querySelectorAll('[data-wcrvolver]').forEach(x => x.onclick = () => { delete w[+x.dataset.wcrvolver].borrar; renderFichaWcRad(); });
+  fic.querySelectorAll('[data-wcplay]').forEach(x => x.onclick = () => wcProbarAudio(x.dataset.wcplay, x.dataset.nombre, x));
+  wcEnlazarResultados();
+  $('wc-rb-buscar').onclick = wcBuscarRadios;
+  $('wc-rb-txt').onkeydown = e => { if (e.key === 'Enter') wcBuscarRadios(); };
+  $('wc-rb-ar').onchange = () => { b.ar = $('wc-rb-ar').checked; if (b.txt) wcBuscarRadios(); };
+  // ordenar arrastrando (mismo patrón que MdT)
+  const tbody = $('wc-rad-tbody');
+  if (tbody) {
+    let desde = null;
+    tbody.querySelectorAll('tr[draggable]').forEach(tr => {
+      tr.ondragstart = e => { desde = +tr.dataset.i; tr.classList.add('arrastrando'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(desde)); };
+      tr.ondragend = () => tr.classList.remove('arrastrando');
+      tr.ondragover = e => { e.preventDefault(); tbody.querySelectorAll('tr.sobre').forEach(x => x.classList.remove('sobre')); tr.classList.add('sobre'); };
+      tr.ondragleave = () => tr.classList.remove('sobre');
+      tr.ondrop = e => {
+        e.preventDefault(); tr.classList.remove('sobre');
+        const hasta = +tr.dataset.i; if (desde === null || desde === hasta) return;
+        const [mov] = w.splice(desde, 1); w.splice(hasta, 0, mov);
+        renderFichaWcRad();
+      };
+    });
+  }
+  $('wc-descartar').onclick = async () => {
+    if (!cambiosWc().length) return;
+    if (await confirmar('Descartar cambios', [], { intro: '¿Volver a lo guardado?', textoOk: 'Descartar', peligro: true })) { const bq = ed.busq; abrirWc(WC_RAD); st.wcEd.busq = bq; renderFichaWcRad(); }
+  };
+  $('wc-guardar').onclick = guardarWc;
+  wcPintarBotonesAudio();
+  actualizarBarraWc();
+}
+function wcRbOk(r) { return /^https:\/\//i.test(r.url_resolved || '') && Number(r.lastcheckok) === 1; }
+function wcResultadosHtml() {
+  const b = st.wcEd.busq;
+  if (b.cargando) return '<div class="cargando" style="margin:16px 0"><div class="spinner"></div>Buscando…</div>';
+  if (b.error) return `<div class="nota" style="color:var(--err-fg)">${esc(b.error)}</div>`;
+  if (!b.res) return '';
+  if (!b.res.length) return '<div class="nota">No se encontraron radios con ese nombre.' + (b.ar ? ' Probá destildando <b>Solo Argentina</b>.' : '') + '</div>';
+  const ya = new Set(st.wcEd.w.rads.filter(x => !x.borrar).map(x => x.stream_url));
+  return `<table class="tabla" style="margin-top:10px"><tbody>${b.res.map((r, i) => {
+    const ok = wcRbOk(r), agregada = ya.has(r.url_resolved);
+    const lugar = [r.state, r.countrycode].filter(Boolean).join(' · ');
+    const tec = [r.codec, r.bitrate ? r.bitrate + ' kbps' : ''].filter(Boolean).join(' ');
+    return `<tr><td style="width:46px">${wcLogo({ nombre: r.name, logo_url: /^https:\/\//i.test(r.favicon || '') ? r.favicon : '' })}</td>
+      <td><b>${esc(r.name.trim())}</b><div class="nota" style="margin:0">${esc([lugar, tec].filter(Boolean).join(' · '))}</div></td>
+      <td style="width:170px">${ok ? '<span class="chip ok">✓ funciona en la app</span>' : `<span class="chip err" title="${/^https:/i.test(r.url_resolved || '') ? 'Su último chequeo falló' : 'Solo transmite por http: el navegador la bloquea'}">✗ no funciona</span>`}</td>
+      <td class="acciones">${ok ? `<button class="btn-icono" type="button" data-wcplay="${esc(r.url_resolved)}" data-nombre="${esc(r.name.trim())}">▶ Probar</button>` : ''}
+        ${agregada ? '<span class="chip">agregada</span>' : `<button class="btn chico" type="button" data-wcrb="${i}" ${ok ? '' : 'disabled'}>+ Agregar</button>`}</td></tr>`;
+  }).join('')}</tbody></table>`;
+}
+function wcEnlazarResultados() {
+  const cont = $('wc-rb-res'); if (!cont) return;
+  wcLogosFallback(cont);
+  cont.querySelectorAll('[data-wcplay]').forEach(x => x.onclick = () => wcProbarAudio(x.dataset.wcplay, x.dataset.nombre, x));
+  cont.querySelectorAll('[data-wcrb]').forEach(x => x.onclick = () => {
+    const r = st.wcEd.busq.res[+x.dataset.wcrb];
+    st.wcEd.w.rads.push({ id: uuid(), nombre: r.name.trim().replace(/\s+/g, ' ').slice(0, 40), stream_url: r.url_resolved,
+      logo_url: /^https:\/\/\S+$/i.test(r.favicon || '') ? r.favicon : '', rb_uuid: r.stationuuid || '', activa: true });
+    toast('Agregada: ' + r.name.trim() + ' (falta Guardar cambios)');
+    renderFichaWcRad();
+  });
+  wcPintarBotonesAudio();
+}
+async function wcBuscarRadios() {
+  const b = st.wcEd.busq, txt = $('wc-rb-txt').value.trim();
+  b.txt = txt; b.ar = $('wc-rb-ar').checked;
+  if (txt.length < 2) { toast('Escribí al menos 2 letras del nombre.', true); return; }
+  b.cargando = true; b.error = ''; $('wc-rb-res').innerHTML = wcResultadosHtml();
+  const qs = new URLSearchParams({ name: txt, limit: '30', hidebroken: 'true', order: 'clickcount', reverse: 'true' });
+  if (b.ar) qs.set('countrycode', 'AR');
+  let res = null, ultimoError = null;
+  for (const srv of RB_SERVIDORES) {
+    try {
+      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 7000);
+      const r = await fetch(srv + '/json/stations/search?' + qs, { signal: ctl.signal });
+      clearTimeout(t);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      res = await r.json(); break;
+    } catch (e) { ultimoError = e; console.warn('[Radio Browser]', srv, e.message); }
+  }
+  if (st.wcEd !== null && st.wcEd.busq === b) {
+    b.cargando = false;
+    if (res) { const vistos = new Set(); b.res = res.filter(r => r.url_resolved && !vistos.has(r.url_resolved) && vistos.add(r.url_resolved)).sort((x, y) => wcRbOk(y) - wcRbOk(x)); }
+    else b.error = 'No se pudo consultar Radio Browser (' + (ultimoError ? ultimoError.message : 'sin respuesta') + '). Probá de nuevo en un rato.';
+    const el = $('wc-rb-res'); if (el) { el.innerHTML = wcResultadosHtml(); wcEnlazarResultados(); }
+  }
+}
+function wcRadOrdenCambio() {
+  const ed = st.wcEd;
+  const a = ed.w.rads.filter(x => !x.borrar && wcRadOrig(x)).map(x => x.id);
+  const o = ed.orig.rads.filter(x => a.includes(x.id)).map(x => x.id);
+  const nuevasAlFinal = ed.w.rads.filter(x => !x.borrar).every((x, i, arr) => wcRadOrig(x) || arr.slice(i).every(y => !wcRadOrig(y)));
+  return a.join() !== o.join() || !nuevasAlFinal;
+}
+function cambiosWcRad() {
+  const ed = st.wcEd, out = [];
+  ed.w.rads.forEach(k => {
+    const o = wcRadOrig(k);
+    if (!o) { out.push({ tipo: 'mas', html: `<b>Radio nueva:</b> ${esc(k.nombre)}` }); return; }
+    if (k.borrar) { out.push({ tipo: 'menos', html: `<b>Se quita la radio:</b> ${esc(o.nombre)}` }); return; }
+    if (o.nombre !== k.nombre) out.push({ tipo: 'cambio', html: `<b>Radio · nombre:</b> ${esc(o.nombre)} → <b>${esc(k.nombre)}</b>` });
+    if (o.activa !== k.activa) out.push({ tipo: k.activa ? 'mas' : 'menos', html: `<b>${esc(k.nombre)}:</b> ${k.activa ? 'se activa' : 'queda inactiva (no se ve en el celular)'}` });
+  });
+  if (wcRadOrdenCambio()) out.push({ tipo: 'cambio', html: '<b>Orden:</b> ' + ed.w.rads.filter(x => !x.borrar).map(x => esc(x.nombre)).join(' · ') });
+  return out;
+}
+function validarWcRad() {
+  for (const k of st.wcEd.w.rads.filter(x => !x.borrar)) {
+    if (vacio(k.nombre) || k.nombre.trim().length > 40) return 'Cada radio necesita un nombre (hasta 40 caracteres).';
+    if (!/^https:\/\/\S+$/.test(k.stream_url)) return `${k.nombre}: el link del audio tiene que ser https.`;
+  }
+  return '';
+}
+async function guardarWcRad() {
+  const ed = st.wcEd, cambios = cambiosWcRad(); if (!cambios.length) return;
+  const err = validarWcRad(); if (err) { avisar('No se puede guardar', esc(err)); return; }
+  if (!(await confirmar('Guardar radios', cambios, { textoOk: 'Guardar', intro: 'Los celulares lo toman al instante (si la radio que suena se quita, se calla).' }))) return;
+  const btn = $('wc-guardar'); btn.disabled = true; btn.textContent = 'Guardando…';
+  try {
+    const vivas = ed.w.rads.filter(x => !x.borrar);
+    for (const k of ed.w.rads.filter(x => x.borrar)) await q(sb.from('wc_radios').delete().eq('id', k.id));
+    for (const [i, k] of vivas.entries()) {
+      const o = wcRadOrig(k), orden = (i + 1) * 10;
+      const fila = { nombre: k.nombre.trim(), activa: !!k.activa, orden };
+      if (!o) await q(sb.from('wc_radios').insert({ id: k.id, ...fila, stream_url: k.stream_url, logo_url: k.logo_url || null, rb_uuid: k.rb_uuid || null }));
+      else {
+        const ordenAntes = (W.radios.find(r => r.id === k.id) || {}).orden;
+        if (o.nombre !== k.nombre || o.activa !== k.activa || ordenAntes !== orden) await q(sb.from('wc_radios').update(fila).eq('id', k.id));
+      }
+    }
+    toast('Radios guardadas: los celulares ya las tienen');
+  } catch (e) {
+    console.error('[guardarWcRad]', e);
+    await avisar('No se pudo guardar', esc(textoError(e)) + '<div class="nota">Si una parte llegó a guardarse, la ficha se recarga con lo que quedó en la base.</div>');
+  }
+  st.wcEd = null; st.wcSel = WC_RAD; await abrirVistaWc();
 }
 
 /* ════════════════════════════════════════════════════════
