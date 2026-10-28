@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GOE Admin</title>
 <!--
-  index_admin_v1_5.html — GOE Admin v1.5 (15-oct-2026)
+  index_admin_v1_6.html — GOE Admin v1.6 (28-oct-2026)
   Repo: goeapp/admin → https://goeapp.github.io/admin/ (subir como index.html)
 
   Administración del stack sobre Supabase (proyecto PWAgoe), solo para el admin global.
@@ -18,6 +18,9 @@
               + catálogos de Listas: Plantilla (obras nuevas) y los de cada obra (v1.4)
   · CO:       ClimaObra por obra: ubicación (con mapa), jornada, umbrales de día perdido, avisos por persona
               (recibe, canal, hora) y decisiones ocultas → Restaurar (v1.5)
+  · WC:       WebCam DMS v5: cámaras (código, nombre, orden, activa), el celular emparejado de cada una con su
+              configuración (arranque, cámara inicial, calidad, reloj, clima, calendario), Emparejar (código de
+              6 dígitos con cuenta regresiva) / Desemparejar, registro (wc_log) y 📅 Calendarios (dirección iCal + Probar) (v1.6)
   · Mail:     nombre de cada app en el mail del código (goe_apps.nombre_mail) + generador de la plantilla v2.0
   · Login por código (Supabase Auth), igual que MdT v15.0, con sesión propia (admin-sb-auth).
   · Todos los cambios se guardan con botón y un resumen para confirmar.
@@ -28,7 +31,9 @@
                         + bdc_esquema_v7_0_0.sql (tablas bdc_)
                         + pk_esquema_v9_0_0.sql + pk_datos_v9_0_0.sql (tablas pk_, goe_apps.nombre_mail)
                         + pk_listas_esquema_v9_1_0.sql + pk_listas_datos_v9_1_0.sql (catálogos de Listas)
-                        + co_esquema_v17_0_1.sql + co_datos_v17_0_0.sql (tablas co_, app co).
+                        + co_esquema_v17_0_1.sql + co_datos_v17_0_0.sql (tablas co_, app co)
+                        + wc_esquema_v5_0_0.sql (tablas wc_, app wc) + Edge Function wc-calendario.
+  Ayuda: ayuda_admin.html en el mismo repo (botón "?" del encabezado).
 
   Changelog
   v1.0 — primera versión.
@@ -49,6 +54,14 @@
          coordenadas de Google Maps, jornada, umbrales: lluvia, viento, ráfaga, calor y helada, activa) ·
          Avisos (por persona con acceso: recibe, canal mail / Telegram / los dos, hora de 3 a 23) ·
          Ocultas (decisiones de día perdido quitadas en CO → Restaurar).
+  v1.6 — Pestaña WC (WebCam DMS v5.0): lista con 📅 Calendarios y las cámaras con su estado (en línea / sin señal /
+         sin celular) · ficha de cámara con Cámara · Celular · Registro. Emparejar muestra el código grande con cuenta
+         regresiva y avisa cuando el celular quedó emparejado; Desemparejar borra el celular (vuelve a la pantalla de
+         emparejar en su próximo ping). Calendarios: dirección iCal oculta (👁) y Probar (Edge Function wc-calendario).
+         Personas → Apps: se suma WC (entra = puede ver las cámaras).
+         Botón "?" en el encabezado: abre ayuda_admin.html.
+         CO: el mapa ya no queda encima de las ventanas de confirmación; las coordenadas pegadas de Google Maps se
+         redondean a 7 decimales (como al tocar el mapa).
 -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
@@ -214,9 +227,35 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
 .barra-orden span { margin-right: auto; }
 
 /* ── CO (v1.5) ─────────────────────────────────────────── */
-.co-mapa { height: 300px; border-radius: var(--radius-sm); border: 1px solid var(--border); margin-top: 6px; background: #e2e8f0; }
+.co-mapa { height: 300px; border-radius: var(--radius-sm); border: 1px solid var(--border); margin-top: 6px; background: #e2e8f0;
+  position: relative; z-index: 0; isolation: isolate; }   /* v1.6: Leaflet usa z-index 400–1000; así queda debajo del modal */
 .co-umb { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px 14px; }
 .co-unidad { font-size: .7rem; color: var(--muted); }
+/* ── WC (v1.6) ─────────────────────────────────────────── */
+.wc-punto { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #94a3b8; flex-shrink: 0; margin-right: 2px; }
+.wc-punto.ok { background: var(--success); box-shadow: 0 0 0 3px rgba(22,163,74,.18); }
+.wc-punto.err { background: var(--danger); }
+.wc-h { font-family: 'Bebas Neue', sans-serif; font-weight: 400; font-size: 1.05rem; letter-spacing: .5px; margin: 18px 0 8px; }
+.wc-info { background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 14px; display: flex; flex-direction: column; gap: 3px; }
+.wc-info > div:first-child { display: flex; align-items: center; gap: 8px; }
+.wc-ua { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+#wc-sec .campo label.check { text-transform: none; letter-spacing: 0; font-size: .84rem; color: var(--text); font-weight: 500; }
+.wc-chk-cambio { background: #fffbeb; border-radius: 6px; padding: 2px 6px; margin-left: -6px; }
+.wc-acciones { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.wc-vacio { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 26px 20px; max-width: 460px; margin: 0 auto; }
+.wc-url { display: flex; gap: 6px; align-items: center; }
+.wc-url .inp { font-family: monospace; font-size: .78rem; }
+.wc-log td { font-size: .78rem; }
+.wc-det { font-family: monospace; font-size: .72rem !important; color: var(--muted); max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wc-cod-box { text-align: center; background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 10px 12px; margin-bottom: 12px; }
+.wc-codigo { font-family: 'Bebas Neue', sans-serif; font-size: 4.2rem; letter-spacing: 10px; line-height: 1.1; color: var(--accent2); margin-top: 4px; }
+.wc-codigo.vencido { color: #cbd5e1; text-decoration: line-through; }
+.wc-codigo.usado { color: var(--success); }
+.wc-cod-vence { font-size: .82rem; color: var(--muted); font-weight: 600; }
+.wc-cod-vence.vencido { color: var(--danger); }
+.wc-cod-ok { margin-top: 6px; font-size: .95rem; color: var(--ok-fg); background: var(--ok-bg); border-radius: 999px; display: inline-block; padding: 4px 14px; }
+.hdr-ayuda { width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(255,255,255,.3); color: rgba(255,255,255,.8); display: inline-flex; align-items: center; justify-content: center; text-decoration: none; font-weight: 600; font-size: .9rem; }
+.hdr-ayuda:hover { border-color: var(--accent); color: #fff; background: rgba(217,119,6,.18); }
 /* ── MODAL ─────────────────────────────────────────────── */
 #modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: none; align-items: center; justify-content: center; z-index: 50; }
 #modal-overlay.abierto { display: flex; }
@@ -302,9 +341,11 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
       <button type="button" data-vista="bdc">BDC</button>
       <button type="button" data-vista="pk">PreKOM</button>
       <button type="button" data-vista="co">CO</button>
+      <button type="button" data-vista="wc">WC</button>
       <button type="button" data-vista="mail">Mail</button>
     </nav>
     <span class="hdr-sep"></span>
+    <a class="hdr-ayuda" id="hdr-ayuda" href="ayuda_admin.html" target="_blank" rel="noopener" title="Ayuda: qué hacer en cada pestaña">?</a>
     <span class="hdr-user" id="hdr-user"></span>
     <button class="hdr-avatar" id="hdr-avatar" type="button" title="Cerrar sesión en este dispositivo"></button>
   </header>
@@ -400,6 +441,21 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
     <div class="col-ficha" id="co-ficha"><div class="ficha-vacia">Elegí una obra de la lista.</div></div>
   </section>
 
+  <!-- WebCam (v1.6) -->
+  <section class="vista" id="vista-wc">
+    <aside class="col-lista">
+      <div class="lista-top">
+        <div class="fila">
+          <button class="btn" id="wc-nueva" type="button">+ Nueva cámara</button>
+          <button class="btn sec" id="wc-refrescar" type="button" title="Volver a leer el estado de los celulares">↻ Estados</button>
+        </div>
+        <div class="nota" style="margin:0">WebCam DMS: cámaras, el celular de cada una y los calendarios del panel de casa.</div>
+      </div>
+      <div class="lista-items" id="wc-lista"></div>
+    </aside>
+    <div class="col-ficha" id="wc-ficha"><div class="ficha-vacia">Elegí una cámara de la lista.</div></div>
+  </section>
+
   <!-- Mail del código (v1.3) -->
   <section class="vista" id="vista-mail">
     <div class="col-ficha" id="mail-ficha"><div class="ficha-vacia">Cargando…</div></div>
@@ -422,7 +478,7 @@ table.tabla { width: 100%; border-collapse: collapse; font-size: .84rem; }
 /* ════════════════════════════════════════════════════════
    CONFIGURACIÓN
 ════════════════════════════════════════════════════════ */
-const VERSION_UI     = 'v1.5';
+const VERSION_UI     = 'v1.6';
 const REDIRECT_MAIL  = 'https://goeapp.github.io/admin/';   // la plantilla del mail lo usa para poner "GOE ADMIN"
 const SUPABASE_URL   = 'https://uhuftsxrzwhmvzygcuvp.supabase.co';
 const SUPABASE_KEY   = 'sb_publishable_TCibRAnzgaDIbn_MIirw6w_FltKG8X3';
@@ -435,7 +491,9 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 
 // Apps que usan obras (MdT y Admin no tienen obras)
 const APPS_OBRA  = ['bdc', 'pk', 'lo', 'co'];
-const APP_CORTO  = { bdc: 'BDC', pk: 'PreKOM', lo: 'LO', co: 'CO', mdt: 'MdT', admin: 'Admin' };
+const APP_CORTO  = { bdc: 'BDC', pk: 'PreKOM', lo: 'LO', co: 'CO', wc: 'WC', mdt: 'MdT', admin: 'Admin' };
+// Apps que se habilitan por persona (Personas → Apps): las de obras + WC (v1.6, sin obras)
+const APPS_PERSONA = [...APPS_OBRA, 'wc'];
 const ESTADOS    = { oferta: 'Oferta', activa: 'Activa', cerrada: 'Cerrada', archivada: 'Archivada' };
 const ESTADO_CHIP = { oferta: 'warn', activa: 'ok', cerrada: '', archivada: '' };
 const CAMPOS_OBRA = [
@@ -476,6 +534,7 @@ const st = {
   pkSel: null, pkEd: null, pkTab: 'arbol', pkCatTab: 'sector',   // v1.3/v1.4 — pkEd = { id, orig, w, tab, copiarDesde, origenNodos }
   mailEd: null,                              // v1.3 — mailEd = { orig, w, plantilla }
   coSel: null, coEd: null, coTab: 'obra',    // v1.5 — coEd = { id, orig, w, tab, ocultas, configurada }
+  wcSel: null, wcEd: null, wcTab: 'celular', // v1.6 — wcEd = { id (uuid | 'calendarios' | null = nueva), nueva, orig, w, tab, log }
 };
 let emailPendiente = '';
 
@@ -513,6 +572,9 @@ function textoError(err) {
   if (/pk_lista_filas_.*fkey|foreign key/.test(m)) return 'Ese valor se usa en filas de Listas: no se puede borrar (desactivalo).';
   if (/pk_contenido_punto_check/.test(m)) return 'El punto va con números o letras separados por puntos (ej. 8.5.1).';
   if (/goe_apps_nombre_mail_chk/.test(m)) return 'El nombre del mail va en MAYÚSCULAS, de 2 a 30 caracteres, sin comillas ni llaves.';
+  if (/wc_camaras_codigo_key/.test(m)) return 'Ya existe una cámara con ese código.';
+  if (/wc_camaras_codigo_check/.test(m)) return 'El código va en MAYÚSCULAS y números, de 2 a 12 caracteres.';
+  if (/No existe una cámara activa/.test(m)) return 'La cámara está inactiva: activala para poder emparejar.';
   if (/co_avisos_config_hora_check/.test(m)) return 'La hora del aviso va de 3 a 23.';
   if (/Configuración inválida/.test(m)) return m;
   if (/row-level security|permission denied|42501/i.test(m)) return 'Sin permiso para esa operación.';
@@ -656,7 +718,7 @@ async function cargarDatos() {
 ════════════════════════════════════════════════════════ */
 function haySinGuardar() {
   return (st.obraEd && cambiosObra().length > 0) || (st.personaEd && cambiosPersona().length > 0) || !!st.mdtOrden || (st.loEd && cambiosLo().length > 0) || (st.bdcEd && cambiosBdc().length > 0)
-    || (st.pkEd && cambiosPk().length > 0) || (st.mailEd && cambiosMail().length > 0) || (st.coEd && cambiosCo().length > 0);
+    || (st.pkEd && cambiosPk().length > 0) || (st.mailEd && cambiosMail().length > 0) || (st.coEd && cambiosCo().length > 0) || (st.wcEd && cambiosWc().length > 0);
 }
 async function puedoSalir() {
   if (!haySinGuardar()) return true;
@@ -665,7 +727,7 @@ async function puedoSalir() {
 async function irVista(v) {
   if (v === st.vista && st.appIniciada) return;
   if (!(await puedoSalir())) return;
-  st.obraEd = null; st.personaEd = null; st.mdtOrden = null; st.loEd = null; st.bdcEd = null; st.pkEd = null; st.mailEd = null; st.coEd = null;
+  st.obraEd = null; st.personaEd = null; st.mdtOrden = null; st.loEd = null; st.bdcEd = null; st.pkEd = null; st.mailEd = null; st.coEd = null; st.wcEd = null;
   st.vista = v;
   document.querySelectorAll('.hdr-nav button').forEach(b => b.classList.toggle('activa', b.dataset.vista === v));
   document.querySelectorAll('.vista').forEach(s => s.classList.toggle('activa', s.id === 'vista-' + v));
@@ -676,6 +738,7 @@ async function irVista(v) {
   if (v === 'bdc') { renderListaBdc(); abrirBdc(st.bdcSel || BDC_GENERAL); }
   if (v === 'pk') { renderListaPk(); abrirPk(st.pkSel || (obrasPk()[0] ? obrasPk()[0].obra_id : PK_PLANTILLA)); }
   if (v === 'co') { renderListaCo(); if (st.coSel || obrasCo()[0]) abrirCo(st.coSel || obrasCo()[0].obra_id); else vaciarFicha('co-ficha', 'Ninguna obra tiene ClimaObra tildado (se tilda en Obras → Apps).'); }
+  if (v === 'wc') { $('wc-lista').innerHTML = '<div class="lista-vacia">Cargando…</div>'; abrirVistaWc(); }
   if (v === 'mail') abrirMail();
 }
 function vaciarFicha(id, txt) { $(id).innerHTML = `<div class="ficha-vacia">${esc(txt)}</div>`; }
@@ -958,7 +1021,7 @@ async function guardarObra() {
 /* ════════════════════════════════════════════════════════
    PERSONAS — lista
 ════════════════════════════════════════════════════════ */
-function appsDePersona(id) { return D.appUsuarios.filter(u => u.persona_id === id && u.activo).map(u => u.app).sort((a, b) => APPS_OBRA.indexOf(a) - APPS_OBRA.indexOf(b)); }
+function appsDePersona(id) { return D.appUsuarios.filter(u => u.persona_id === id && u.activo && APPS_PERSONA.includes(u.app)).map(u => u.app).sort((a, b) => APPS_PERSONA.indexOf(a) - APPS_PERSONA.indexOf(b)); }
 function renderListaPersonas() {
   const txt = sinAcentos($('personas-buscar').value), inact = $('personas-ver-inactivas').checked;
   const lista = D.personas.filter(p => (inact || p.activa) &&
@@ -988,7 +1051,7 @@ function modeloPersona(p) {
     mails: p ? D.mails.filter(x => x.persona_id === p.id).map(x => ({ email: x.email, principal: x.principal })) : [],
     apps: {},
   };
-  APPS_OBRA.forEach(app => {
+  APPS_PERSONA.forEach(app => {
     const u = p && D.appUsuarios.find(x => x.persona_id === p.id && x.app === app);
     m.apps[app] = { existe: !!u, entra: u ? u.activo : false, probador: u ? u.probador_mantenimiento : false };
   });
@@ -1018,11 +1081,12 @@ function renderFichaPersona() {
       <td class="acciones"><button class="btn-icono peligro" type="button" data-quitar-mail="${i}" ${esSesion ? 'disabled title="Es el mail con el que entraste"' : ''}>Quitar</button></td></tr>`;
   }).concat(o.mails.filter(x => !w.mails.find(m => m.email === x.email)).map(x => `<tr class="quitado"><td>${esc(x.email)}</td><td></td>
       <td class="acciones"><button class="btn-icono" type="button" data-volver-mail="${esc(x.email)}">Deshacer</button></td></tr>`)).join('');
-  const apps = APPS_OBRA.map(app => {
+  const apps = APPS_PERSONA.map(app => {
     const a = w.apps[app], b = o.apps[app];
     return `<tr class="${a.entra !== b.entra || a.probador !== b.probador ? 'cambiado' : ''}"><td><b>${APP_CORTO[app]}</b></td>
       <td><label class="check"><input type="checkbox" data-entra="${app}" ${a.entra || ed.esAdmin ? 'checked' : ''} ${ed.esAdmin ? 'disabled' : ''}> entra</label></td>
-      <td><label class="check"><input type="checkbox" data-prob="${app}" ${a.probador ? 'checked' : ''}> probador de mantenimiento</label></td></tr>`;
+      <td>${app === 'wc' ? '<span class="nota" style="margin:0">ve las cámaras de WebCam (visor)</span>'
+        : `<label class="check"><input type="checkbox" data-prob="${app}" ${a.probador ? 'checked' : ''}> probador de mantenimiento</label>`}</td></tr>`;
   }).join('');
   const accesos = ed.nueva ? [] : D.accesos.filter(a => a.persona_id === o.datos.id)
     .map(a => ({ ...a, ob: obra(a.obra_id) })).sort((a, b) => (a.ob?.codigo || '').localeCompare(b.ob?.codigo || '') || APPS_OBRA.indexOf(a.app) - APPS_OBRA.indexOf(b.app));
@@ -1116,9 +1180,9 @@ function cambiosPersona() {
   o.mails.forEach(x => { if (!w.mails.find(m => m.email === x.email)) out.push({ tipo: 'menos', html: `<b>Mail:</b> se quita ${esc(x.email)}`, aviso: 'Con ese mail ya no va a poder entrar.' }); });
   const pa = (o.mails.find(m => m.principal) || {}).email, pb = (w.mails.find(m => m.principal) || {}).email;
   if (pa !== pb && pb) out.push({ tipo: 'cambio', html: `<b>Mail principal:</b> ${esc(pa || '—')} → ${esc(pb)}` });
-  APPS_OBRA.forEach(app => {
+  APPS_PERSONA.forEach(app => {
     const a = o.apps[app], b = w.apps[app];
-    if (a.entra !== b.entra) out.push(b.entra ? { tipo: 'mas', html: `<b>${APP_CORTO[app]}:</b> se habilita la entrada` } : { tipo: 'menos', html: `<b>${APP_CORTO[app]}:</b> deja de entrar`, aviso: 'Sus accesos a obras de esta app se conservan pero no los puede usar.' });
+    if (a.entra !== b.entra) out.push(b.entra ? { tipo: 'mas', html: `<b>${APP_CORTO[app]}:</b> se habilita la entrada` } : { tipo: 'menos', html: `<b>${APP_CORTO[app]}:</b> deja de entrar`, aviso: app === 'wc' ? 'Deja de ver las cámaras.' : 'Sus accesos a obras de esta app se conservan pero no los puede usar.' });
     if (a.probador !== b.probador) out.push({ tipo: 'cambio', html: `<b>${APP_CORTO[app]}:</b> probador de mantenimiento ${b.probador ? 'sí' : 'no'}` });
   });
   return out;
@@ -1155,7 +1219,7 @@ async function guardarPersona() {
       await q(sb.from('goe_persona_mails').update({ principal: true }).eq('email', ppal));
     }
     // apps
-    const filas = APPS_OBRA.filter(app => { const a = o.apps[app], b = w.apps[app]; return a.entra !== b.entra || a.probador !== b.probador; })
+    const filas = APPS_PERSONA.filter(app => { const a = o.apps[app], b = w.apps[app]; return a.entra !== b.entra || a.probador !== b.probador; })
       .map(app => ({ persona_id: id, app, activo: w.apps[app].entra, probador_mantenimiento: w.apps[app].probador }));
     if (filas.length) await q(sb.from('goe_app_usuarios').upsert(filas, { onConflict: 'persona_id,app' }));
     await cargarDatos();
@@ -2831,7 +2895,8 @@ function renderCoObra() {
   $('co-pegar').onchange = $('co-pegar').onpaste = () => setTimeout(() => {
     const m = String($('co-pegar').value).match(/(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)/);
     if (!m) { toast('No se reconocen coordenadas (formato: -34.84, -57.93).', true); return; }
-    w.lat = m[1]; w.lon = m[2]; $('co-pegar').value = '';
+    const r7 = v => Number(v).toFixed(7);   // v1.6: 7 decimales, igual que al tocar el mapa
+    w.lat = r7(m[1]); w.lon = r7(m[2]); $('co-pegar').value = '';
     renderCoObra(); actualizarBarraCo(); toast('Coordenadas cargadas');
   }, 0);
   coMontarMapa();
@@ -2973,6 +3038,540 @@ async function guardarCo() {
     await avisar('No se pudo guardar', esc(textoError(e)) + '<div class="nota">Si una parte llegó a guardarse, la ficha se recarga con lo que quedó en la base.</div>');
     abrirCo(ed.id);
   }
+}
+
+/* ════════════════════════════════════════════════════════
+   WEBCAM · WC (v1.6) — wc_camaras, wc_dispositivos, wc_calendarios, wc_log
+   · Lista: 📅 Calendarios + cámaras con su estado (en línea / sin señal / sin celular).
+   · Ficha de cámara: Cámara (código, nombre, orden, activa) · Celular (configuración
+     del celular emparejado, Emparejar / Desemparejar) · Registro (wc_log, solo lectura).
+   · Calendarios: nombre + dirección secreta iCal (oculta) + "Probar" (Edge Function).
+   · El celular toma la configuración en vivo por Realtime; si se lo desempareja,
+     vuelve a la pantalla de emparejar en menos de un minuto (su próximo ping).
+════════════════════════════════════════════════════════ */
+const WC_CAL = 'calendarios';
+const WC_FN_CALENDARIO = 'wc-calendario';
+const WC_EN_LINEA_S = 150;                      // mismo criterio que wc_camaras_visor
+const WC_TABS = { camara: 'Cámara', celular: 'Celular', registro: 'Registro' };
+const WC_CAMPOS_CAM = [
+  { k: 'codigo', t: 'Código' }, { k: 'nombre', t: 'Nombre' }, { k: 'orden', t: 'Orden' }, { k: 'activa', t: 'Activa', b: true },
+];
+const WC_CAMPOS_DISP = [
+  { k: 'nombre', t: 'Nombre del celular' }, { k: 'autoarranque', t: 'Arranque automático', b: true },
+  { k: 'camara_inicial', t: 'Cámara inicial' }, { k: 'calidad', t: 'Calidad' },
+  { k: 'mostrar_reloj', t: 'Reloj', b: true }, { k: 'mostrar_clima', t: 'Clima', b: true },
+  { k: 'mostrar_calendario', t: 'Calendario', b: true }, { k: 'calendario_id', t: 'Calendario asignado' },
+];
+const WC_CALIDAD = { alta: 'Alta · 1280×720 · 24 fps', media: 'Media · 960×540 · 15 fps', baja: 'Baja · 640×360 · 10 fps' };
+const WC_INICIAL = { trasera: 'Trasera', frontal: 'Frontal' };
+const WC_ESTADO  = { inactivo: 'cámara detenida', esperando: 'esperando visor', transmitiendo: 'transmitiendo' };
+const WC_ROL     = { tx: 'Celular', rx: 'Visor', admin: 'Admin', edge: 'Calendario' };
+const W = { camaras: [], disp: [], cals: [] };
+
+async function cargarWc() {
+  const [camaras, disp, cals] = await Promise.all([
+    q(sb.from('wc_camaras').select('*').order('orden').order('nombre')),
+    q(sb.from('wc_dispositivos').select('*')),
+    q(sb.from('wc_calendarios').select('*').order('nombre')),
+  ]);
+  Object.assign(W, { camaras, disp, cals });
+}
+const wcCam  = id => W.camaras.find(c => c.id === id);
+const wcDisp = camId => W.disp.find(d => d.camara_id === camId);
+const wcCalNombre = id => (W.cals.find(k => k.id === id) || {}).nombre || '—';
+function wcHace(iso) {
+  if (!iso) return 'nunca';
+  const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+  if (s < 60) return 'hace ' + s + ' s';
+  if (s < 3600) return 'hace ' + Math.round(s / 60) + ' min';
+  if (s < 86400) return 'hace ' + Math.round(s / 3600) + ' h';
+  return 'hace ' + Math.round(s / 86400) + ' d';
+}
+function wcFechaHora(iso) { return iso ? new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'; }
+function wcEstado(c) {
+  if (!c.activa) return { cls: 'off', txt: 'inactiva' };
+  const d = wcDisp(c.id);
+  if (!d) return { cls: 'off', txt: 'sin celular' };
+  const vivo = d.ultimo_visto && Date.now() - new Date(d.ultimo_visto).getTime() < WC_EN_LINEA_S * 1000;
+  if (!vivo) return { cls: 'err', txt: 'sin señal · visto ' + wcHace(d.ultimo_visto) };
+  return { cls: 'ok', txt: 'en línea · ' + (WC_ESTADO[d.estado] || d.estado) };
+}
+
+/* ── Vista ── */
+async function abrirVistaWc() {
+  $('wc-ficha').innerHTML = '<div class="cargando"><div class="spinner"></div>Cargando…</div>';
+  try { await cargarWc(); }
+  catch (e) { console.error('[cargarWc]', e); $('wc-ficha').innerHTML = `<div class="ficha-vacia" style="color:var(--err-fg)">No se pudo cargar: ${esc(textoError(e))}</div>`; return; }
+  const sel = st.wcSel && (st.wcSel === WC_CAL || wcCam(st.wcSel)) ? st.wcSel : (W.camaras[0] ? W.camaras[0].id : WC_CAL);
+  abrirWc(sel);
+}
+function renderListaWc() {
+  const sel = st.wcEd && st.wcEd.nueva ? null : st.wcSel;
+  const nueva = st.wcEd && st.wcEd.nueva ? '<div class="item sel"><div class="item-tit">Cámara nueva</div><div class="item-sub">sin guardar</div></div>' : '';
+  const activos = W.cals.filter(k => k.activo).length;
+  $('wc-lista').innerHTML = `
+    <div class="item ${sel === WC_CAL ? 'sel' : ''}" data-wc="${WC_CAL}">
+      <div class="item-tit">📅 Calendarios</div>
+      <div class="item-sub">${W.cals.length ? `${W.cals.length} cargado${W.cals.length > 1 ? 's' : ''} · ${activos} activo${activos === 1 ? '' : 's'}` : 'ninguno todavía'}</div></div>` + nueva +
+    (W.camaras.length ? W.camaras.map(c => {
+      const e = wcEstado(c), d = wcDisp(c.id);
+      return `<div class="item ${sel === c.id ? 'sel' : ''}" data-wc="${c.id}">
+        <div class="item-tit"><span class="wc-punto ${e.cls}"></span>${esc(c.nombre)} <span class="chip">${esc(c.codigo)}</span></div>
+        <div class="item-sub">${esc(e.txt)}${d ? ' · ' + esc(d.nombre) : ''}</div></div>`;
+    }).join('') : '<div class="lista-vacia">No hay cámaras. Creá una con <b>+ Nueva cámara</b>.</div>');
+  $('wc-lista').querySelectorAll('[data-wc]').forEach(el => el.onclick = () => seleccionarWc(el.dataset.wc));
+}
+async function seleccionarWc(id) {
+  if (st.wcEd && !st.wcEd.nueva && st.wcSel === id) return;
+  if (!(await puedoSalir())) return;
+  abrirWc(id);
+}
+async function refrescarWc() {
+  if (!(await puedoSalir())) return;
+  st.wcEd = null; await abrirVistaWc(); toast('Estados actualizados');
+}
+async function nuevaCamaraWc() {
+  if (!(await puedoSalir())) return;
+  abrirWc(null);
+  const inp = document.querySelector('#wc-sec [data-wck="codigo"]'); if (inp) inp.focus();
+}
+function modeloDisp(d) {
+  return d ? { nombre: d.nombre || '', autoarranque: !!d.autoarranque, camara_inicial: d.camara_inicial, calidad: d.calidad,
+               mostrar_reloj: !!d.mostrar_reloj, mostrar_clima: !!d.mostrar_clima, mostrar_calendario: !!d.mostrar_calendario,
+               calendario_id: d.calendario_id || '' } : null;
+}
+function abrirWc(id) {
+  if (id === WC_CAL) {
+    st.wcSel = WC_CAL;
+    const orig = { cals: W.cals.map(k => ({ id: k.id, nombre: k.nombre, ical_url: k.ical_url, activo: !!k.activo })) };
+    st.wcEd = { id: WC_CAL, orig, w: clonar(orig), ver: {} };
+    renderListaWc(); renderFichaWcCal(); return;
+  }
+  const c = id ? wcCam(id) : null;
+  if (id && !c) { st.wcSel = null; vaciarFicha('wc-ficha', 'La cámara ya no está.'); renderListaWc(); return; }
+  const orig = {
+    cam: c ? { codigo: c.codigo, nombre: c.nombre, orden: String(c.orden), activa: !!c.activa }
+           : { codigo: '', nombre: '', orden: String((W.camaras.reduce((m, x) => Math.max(m, x.orden), 0) || 0) + 10), activa: true },
+    disp: c ? modeloDisp(wcDisp(c.id)) : null,
+  };
+  st.wcSel = id;
+  st.wcEd = { id, nueva: !id, orig, w: clonar(orig), tab: !id ? 'camara' : (WC_TABS[st.wcTab] ? st.wcTab : 'celular'), log: null };
+  renderListaWc(); renderFichaWc();
+}
+
+/* ── Ficha de cámara ── */
+function renderFichaWc() {
+  const ed = st.wcEd; if (!ed || ed.id === WC_CAL) return;
+  const c = ed.id ? wcCam(ed.id) : null, e = c ? wcEstado(c) : null;
+  const tabs = ed.nueva ? { camara: 'Cámara' } : WC_TABS;
+  $('wc-ficha').innerHTML = `
+    <div class="ficha-scroll">
+      <div class="ficha-tit">${ed.nueva ? 'Cámara nueva' : esc(c.nombre)} <span class="chip app">WC</span> ${c ? `<span class="chip">${esc(c.codigo)}</span> <span class="chip ${e.cls === 'off' ? '' : e.cls}">${esc(e.txt)}</span>` : ''}</div>
+      <div class="ficha-sub">${ed.nueva ? 'Completá el código y el nombre y guardá. Después emparejás el celular desde la solapa Celular.'
+        : 'Lo que guardes acá le llega al celular en vivo (sin recargar). Los visores ven la lista de cámaras activas.'}</div>
+      <div class="card">
+        <div class="tabs" id="wc-tabs">${Object.entries(tabs).map(([k, t]) => `<button type="button" data-wctab="${k}" class="${k === ed.tab ? 'activa' : ''}">${t}</button>`).join('')}</div>
+        <div id="wc-sec"></div>
+      </div>
+    </div>
+    <div class="barra-guardar">
+      <span class="estado" id="wc-estado"></span>
+      <button class="btn sec" id="wc-descartar" type="button">Descartar</button>
+      <button class="btn" id="wc-guardar" type="button">${ed.nueva ? 'Crear cámara' : 'Guardar cambios'}</button>
+    </div>`;
+  $('wc-tabs').querySelectorAll('[data-wctab]').forEach(b => b.onclick = () => { ed.tab = b.dataset.wctab; st.wcTab = ed.tab; renderFichaWc(); });
+  $('wc-descartar').onclick = async () => {
+    if (!cambiosWc().length && !ed.nueva) return;
+    if (await confirmar('Descartar cambios', [], { intro: '¿Volver a lo guardado?', textoOk: 'Descartar', peligro: true })) {
+      if (ed.nueva) { st.wcEd = null; abrirWc(W.camaras[0] ? W.camaras[0].id : WC_CAL); } else abrirWc(ed.id);
+    }
+  };
+  $('wc-guardar').onclick = guardarWc;
+  ({ camara: renderWcCamara, celular: renderWcCelular, registro: renderWcRegistro })[ed.tab]();
+  actualizarBarraWc();
+}
+function wcCls(grupo, k) { const ed = st.wcEd; return ed.orig[grupo] && String(ed.w[grupo][k]) !== String(ed.orig[grupo][k]) ? 'cambiado' : ''; }
+function wcEnlazar(grupo) {
+  const w = st.wcEd.w[grupo];
+  $('wc-sec').querySelectorAll(`[data-wc${grupo === 'cam' ? 'k' : 'd'}]`).forEach(el => el.oninput = el.onchange = () => {
+    const k = el.dataset.wck || el.dataset.wcd;
+    let v = el.type === 'checkbox' ? el.checked : el.value;
+    if (k === 'codigo') { v = v.toUpperCase().replace(/[^A-Z0-9]/g, ''); if (el.value !== v) el.value = v; }
+    w[k] = v;
+    if (el.type !== 'checkbox') el.classList.toggle('cambiado', !!wcCls(grupo, k));
+    if (el.type === 'checkbox' || el.tagName === 'SELECT') { (grupo === 'cam' ? renderWcCamara : renderWcCelular)(); }
+    actualizarBarraWc();
+  });
+}
+function renderWcCamara() {
+  const ed = st.wcEd, w = ed.w.cam;
+  const chk = (k, txt) => `<label class="check" style="margin-top:6px"><input type="checkbox" data-wck="${k}" ${w[k] ? 'checked' : ''}> ${txt}</label>`;
+  $('wc-sec').innerHTML = `
+    <div class="grid">
+      <div class="campo"><label>Código <span class="req">*</span></label>
+        <input class="inp ${ed.nueva ? '' : wcCls('cam', 'codigo')}" data-wck="codigo" value="${esc(w.codigo)}" maxlength="12" placeholder="ej. LAV" ${ed.nueva ? '' : 'disabled title="El código no se cambia: lo usa el emparejamiento"'}></div>
+      <div class="campo c2"><label>Nombre <span class="req">*</span></label><input class="inp ${wcCls('cam', 'nombre')}" data-wck="nombre" value="${esc(w.nombre)}" maxlength="60" placeholder="ej. Lavadero"></div>
+      <div class="campo"><label>Orden</label><input class="inp ${wcCls('cam', 'orden')}" data-wck="orden" value="${esc(w.orden)}" inputmode="numeric"></div>
+      <div class="campo c2"><label>Estado</label>${chk('activa', 'Activa (se ve en el visor y se puede emparejar)')}</div>
+    </div>
+    <div class="nota">El <b>código</b> va en MAYÚSCULAS y números, de 2 a 12 caracteres, y no se cambia después. Para dejar de usar una cámara, destildá <b>Activa</b>: no se borra nada.</div>
+    ${!ed.nueva && !w.activa && ed.orig.cam.activa && ed.orig.disp ? '<div class="nota" style="color:var(--warn-fg)">Al desactivarla, el celular emparejado deja de verse en el visor.</div>' : ''}`;
+  wcEnlazar('cam');
+}
+function renderWcCelular() {
+  const ed = st.wcEd, c = wcCam(ed.id), d = wcDisp(ed.id), w = ed.w.disp;
+  if (!d || !w) {
+    $('wc-sec').innerHTML = `
+      <div class="wc-vacio">
+        <div style="font-size:2rem">📱</div>
+        <div><b>Esta cámara no tiene celular.</b></div>
+        <div class="nota" style="margin:0">Tocá <b>Emparejar</b>: aparece un código de 6 dígitos que vale 15 minutos. En el celular abrí la app WebCam, elegí <b>Cámara</b> y escribí el código.</div>
+        <button class="btn" id="wc-emparejar" type="button" ${c.activa ? '' : 'disabled title="La cámara está inactiva"'}>Emparejar</button>
+        ${c.activa ? '' : '<div class="nota" style="color:var(--warn-fg);margin:0">La cámara está inactiva: activala en la solapa Cámara para poder emparejar.</div>'}
+      </div>`;
+    $('wc-emparejar').onclick = emparejarWc;
+    return;
+  }
+  const e = wcEstado(c);
+  const sel = (k, opciones) => `<select class="inp ${wcCls('disp', k)}" data-wcd="${k}">${Object.entries(opciones).map(([v, t]) => `<option value="${v}" ${String(w[k]) === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+  const chk = (k, txt) => `<label class="check ${wcCls('disp', k) ? 'wc-chk-cambio' : ''}"><input type="checkbox" data-wcd="${k}" ${w[k] ? 'checked' : ''}> ${txt}</label>`;
+  const cals = { '': '— ninguno —' };
+  W.cals.filter(k => k.activo || k.id === w.calendario_id).forEach(k => cals[k.id] = k.nombre + (k.activo ? '' : ' (inactivo)'));
+  const avisoCal = w.mostrar_calendario && !w.calendario_id ? '<span class="chip warn">sin calendario asignado: no se muestra</span>'
+    : (w.mostrar_calendario && W.cals.find(k => k.id === w.calendario_id && !k.activo) ? '<span class="chip warn">el calendario está inactivo: no se muestra</span>' : '');
+  $('wc-sec').innerHTML = `
+    <div class="wc-info">
+      <div><span class="wc-punto ${e.cls}"></span><b>${esc(e.txt)}</b></div>
+      <div class="nota" style="margin:0">Emparejado el ${esc(wcFechaHora(d.emparejado_en))} · última señal ${esc(wcFechaHora(d.ultimo_visto))} (${esc(wcHace(d.ultimo_visto))})</div>
+      ${d.user_agent ? `<div class="nota wc-ua" style="margin:0" title="${esc(d.user_agent)}">${esc(d.user_agent)}</div>` : ''}
+    </div>
+    <h3 class="wc-h">Celular</h3>
+    <div class="grid">
+      <div class="campo c2"><label>Nombre del celular</label><input class="inp ${wcCls('disp', 'nombre')}" data-wcd="nombre" value="${esc(w.nombre)}" maxlength="40"></div>
+      <div class="campo"><label>Cámara inicial</label>${sel('camara_inicial', WC_INICIAL)}</div>
+      <div class="campo"><label>Calidad</label>${sel('calidad', WC_CALIDAD)}</div>
+      <div class="campo c4">${chk('autoarranque', 'Arranque automático: transmite apenas se abre la app')}</div>
+    </div>
+    <h3 class="wc-h">Panel de casa</h3>
+    <div class="grid">
+      <div class="campo">${chk('mostrar_reloj', 'Reloj')}</div>
+      <div class="campo">${chk('mostrar_clima', 'Clima')}</div>
+      <div class="campo">${chk('mostrar_calendario', 'Calendario del día')}</div>
+      <div class="campo"></div>
+      <div class="campo c2"><label>Calendario asignado</label>${sel('calendario_id', cals)}</div>
+      <div class="campo c2"><label>&nbsp;</label><div>${avisoCal}</div></div>
+    </div>
+    <div class="nota">La calidad baja ayuda si el visor se ve cortado por 4G. Los calendarios se cargan en <b>📅 Calendarios</b>.</div>
+    <h3 class="wc-h">Emparejamiento</h3>
+    <div class="wc-acciones">
+      <button class="btn sec" id="wc-emparejar" type="button" ${c.activa ? '' : 'disabled title="La cámara está inactiva"'}>Emparejar otro celular</button>
+      <button class="btn peligro" id="wc-desemparejar" type="button">Desemparejar</button>
+      <span class="nota" style="margin:0">Desemparejar: el celular vuelve a la pantalla de emparejar en menos de un minuto.</span>
+    </div>`;
+  wcEnlazar('disp');
+  $('wc-emparejar').onclick = emparejarWc;
+  $('wc-desemparejar').onclick = desemparejarWc;
+}
+async function renderWcRegistro() {
+  const ed = st.wcEd;
+  const pintar = () => {
+    if (st.wcEd !== ed || ed.tab !== 'registro') return;
+    const filas = ed.log || [];
+    $('wc-sec').innerHTML = `
+      <div class="wc-acciones" style="margin-bottom:10px"><button class="btn sec chico" id="wc-log-act" type="button">↻ Actualizar</button>
+        <span class="nota" style="margin:0">Últimos 100 eventos de esta cámara (se guardan 90 días). Sirve para diagnosticar conexiones.</span></div>
+      ${ed.log === null ? '<div class="cargando" style="margin:20px 0"><div class="spinner"></div>Cargando…</div>'
+        : filas.length ? `<table class="tabla wc-log"><thead><tr><th style="width:150px">Fecha</th><th style="width:90px">Quién</th><th style="width:190px">Evento</th><th>Detalle</th></tr></thead>
+          <tbody>${filas.map(l => `<tr><td>${esc(wcFechaHora(l.creado_en))}</td><td>${esc(WC_ROL[l.rol] || l.rol || '—')}</td><td><b>${esc(l.evento)}</b></td>
+            <td class="wc-det" title="${esc(l.detalle ? JSON.stringify(l.detalle) : '')}">${esc(l.detalle ? JSON.stringify(l.detalle) : '')}</td></tr>`).join('')}</tbody></table>`
+        : '<div class="nota">Sin eventos registrados para esta cámara.</div>'}`;
+    $('wc-log-act').onclick = () => { ed.log = null; renderWcRegistro(); };
+  };
+  if (ed.log === null) {
+    pintar();
+    try { ed.log = await q(sb.from('wc_log').select('*').eq('camara_id', ed.id).order('creado_en', { ascending: false }).limit(100)); }
+    catch (e) { console.error('[wc_log]', e); ed.log = []; toast('No se pudo leer el registro: ' + textoError(e), true); }
+  }
+  pintar();
+}
+function cambiosWc() {
+  const ed = st.wcEd; if (!ed) return [];
+  if (ed.id === WC_CAL) return cambiosWcCal();
+  const out = [], o = ed.orig, w = ed.w;
+  const txt = (c, v) => c.b ? (v ? 'sí' : 'no') : (c.k === 'calendario_id' ? (v ? wcCalNombre(v) : '—')
+    : c.k === 'calidad' ? (v || '—') : c.k === 'camara_inicial' ? (WC_INICIAL[v] || v) : (vacio(v) ? '—' : v));
+  if (ed.nueva) {
+    if (!vacio(w.cam.codigo) || !vacio(w.cam.nombre)) out.push({ tipo: 'mas', html: `<b>Cámara nueva:</b> ${esc(w.cam.codigo || '—')} · ${esc(w.cam.nombre || '—')} (orden ${esc(w.cam.orden)}, ${w.cam.activa ? 'activa' : 'inactiva'})` });
+    return out;
+  }
+  WC_CAMPOS_CAM.forEach(c => {
+    if (String(o.cam[c.k]) === String(w.cam[c.k])) return;
+    out.push({ tipo: 'cambio', html: `<b>Cámara · ${c.t}:</b> ${esc(txt(c, o.cam[c.k]))} → <b>${esc(txt(c, w.cam[c.k]))}</b>`,
+      aviso: c.k === 'activa' && !w.cam.activa ? 'Deja de verse en el visor. No se borra nada.' : '' });
+  });
+  if (o.disp) WC_CAMPOS_DISP.forEach(c => {
+    if (String(o.disp[c.k]) === String(w.disp[c.k])) return;
+    out.push({ tipo: 'cambio', html: `<b>Celular · ${c.t}:</b> ${esc(txt(c, o.disp[c.k]))} → <b>${esc(txt(c, w.disp[c.k]))}</b>` });
+  });
+  return out;
+}
+function actualizarBarraWc() {
+  const ed = st.wcEd, n = cambiosWc().length, el = $('wc-estado'); if (!el) return;
+  el.textContent = n ? `${n} cambio${n > 1 ? 's' : ''} sin guardar` : (ed.nueva ? 'Cámara nueva' : 'Sin cambios');
+  el.className = 'estado' + (n ? ' sucio' : '');
+  $('wc-guardar').disabled = !n; $('wc-descartar').disabled = !n && !ed.nueva;
+}
+function validarWc() {
+  const w = st.wcEd.w.cam;
+  if (!/^[A-Z0-9]{2,12}$/.test(w.codigo)) return 'El código va en MAYÚSCULAS y números, de 2 a 12 caracteres (ej. LAV).';
+  if (st.wcEd.nueva && W.camaras.find(c => c.codigo === w.codigo)) return 'Ya existe una cámara con ese código.';
+  if (vacio(w.nombre) || w.nombre.trim().length > 60) return 'Falta el nombre de la cámara (hasta 60 caracteres).';
+  if (!/^-?\d{1,6}$/.test(String(w.orden).trim())) return 'El orden es un número entero.';
+  const d = st.wcEd.w.disp;
+  if (d && (vacio(d.nombre) || d.nombre.trim().length > 40)) return 'Falta el nombre del celular (hasta 40 caracteres).';
+  return '';
+}
+async function guardarWc() {
+  const ed = st.wcEd;
+  if (ed.id === WC_CAL) return guardarWcCal();
+  const cambios = cambiosWc(); if (!cambios.length) return;
+  const err = validarWc(); if (err) { if (ed.tab !== 'celular' || /cámara|código|orden/i.test(err)) ed.tab = 'camara'; renderFichaWc(); avisar('No se puede guardar', esc(err)); return; }
+  if (!(await confirmar(ed.nueva ? 'Crear cámara' : 'Guardar cámara · ' + esc(ed.orig.cam.nombre), cambios, { textoOk: ed.nueva ? 'Crear cámara' : 'Guardar' }))) return;
+  const btn = $('wc-guardar'); btn.disabled = true; btn.textContent = 'Guardando…';
+  const o = ed.orig, w = ed.w;
+  const cam = { nombre: w.cam.nombre.trim(), orden: parseInt(w.cam.orden, 10), activa: !!w.cam.activa };
+  let id = ed.id;
+  try {
+    if (ed.nueva) {
+      const fila = await q(sb.from('wc_camaras').insert({ codigo: w.cam.codigo, ...cam }).select().single());
+      id = fila.id;
+    } else {
+      if (WC_CAMPOS_CAM.some(c => String(o.cam[c.k]) !== String(w.cam[c.k]))) await q(sb.from('wc_camaras').update(cam).eq('id', id));
+      if (o.disp && WC_CAMPOS_DISP.some(c => String(o.disp[c.k]) !== String(w.disp[c.k]))) {
+        const d = wcDisp(id), x = w.disp;
+        await q(sb.from('wc_dispositivos').update({
+          nombre: x.nombre.trim(), autoarranque: !!x.autoarranque, camara_inicial: x.camara_inicial, calidad: x.calidad,
+          mostrar_reloj: !!x.mostrar_reloj, mostrar_clima: !!x.mostrar_clima, mostrar_calendario: !!x.mostrar_calendario,
+          calendario_id: x.calendario_id || null, actualizado_en: new Date().toISOString() }).eq('auth_uid', d.auth_uid));
+      }
+    }
+    toast(ed.nueva ? 'Cámara creada' : 'Cambios guardados' + (o.disp ? ': el celular ya los tiene' : ''));
+    st.wcEd = null; st.wcSel = id; if (ed.nueva) st.wcTab = 'celular';
+    await abrirVistaWc();
+  } catch (e) {
+    console.error('[guardarWc]', e);
+    btn.disabled = false; btn.textContent = ed.nueva ? 'Crear cámara' : 'Guardar cambios';
+    await avisar('No se pudo guardar', esc(textoError(e)) + '<div class="nota">Si una parte llegó a guardarse, la ficha se recarga con lo que quedó en la base.</div>');
+    if (!ed.nueva) { st.wcEd = null; abrirVistaWc(); }
+  }
+}
+
+/* ── Emparejar / desemparejar ── */
+async function wcSinCambiosPendientes() {
+  if (!cambiosWc().length) return true;
+  await avisar('Primero guardá o descartá', 'Hay cambios sin guardar en esta cámara. Guardalos o descartalos y volvé a intentar.');
+  return false;
+}
+async function emparejarWc() {
+  const ed = st.wcEd, c = wcCam(ed.id);
+  if (!(await wcSinCambiosPendientes())) return;
+  if (wcDisp(c.id) && !(await confirmar('Emparejar otro celular', [{ tipo: 'menos', html: `El celular <b>${esc(wcDisp(c.id).nombre)}</b> deja de ser la cámara <b>${esc(c.nombre)}</b> cuando el nuevo use el código.` }], { textoOk: 'Generar código' }))) return;
+  let codigo;
+  try { codigo = await q(sb.rpc('wc_nuevo_codigo', { p_camara: c.codigo })); }
+  catch (e) { console.error('[wc_nuevo_codigo]', e); avisar('No se pudo generar el código', esc(textoError(e))); return; }
+  const desde = Date.now(), vence = desde + 15 * 60000, previo = (wcDisp(c.id) || {}).auth_uid || null;
+  let tReloj = null, tPoll = null, listo = false;
+  const html = `
+    <div class="wc-cod-box">
+      <div class="nota" style="margin:0">Código para la cámara <b>${esc(c.nombre)}</b> (${esc(c.codigo)})</div>
+      <div class="wc-codigo" id="wc-codigo">${esc(String(codigo).replace(/(\d{3})(\d{3})/, '$1 $2'))}</div>
+      <div class="wc-cod-vence" id="wc-cod-vence">Vence en 15:00</div>
+      <div class="wc-cod-ok" id="wc-cod-ok" hidden></div>
+    </div>
+    <ol class="pasos">
+      <li>En el celular abrí <b>goeapp.github.io/webcam</b> (o la app instalada).</li>
+      <li>Elegí <b>Cámara</b>, poné un nombre (ej. <i>Celu viejo</i>) y escribí el código.</li>
+      <li>Aceptá los permisos de <b>cámara</b> y <b>ubicación</b>. Arranca transmitiendo solo.</li>
+    </ol>
+    <div class="nota">Se usa una sola vez. Esta ventana avisa cuando el celular quedó emparejado.</div>`;
+  const reloj = () => {
+    const el = $('wc-cod-vence'); if (!el || listo) return;
+    const s = Math.max(0, Math.round((vence - Date.now()) / 1000));
+    el.textContent = s ? `Vence en ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : 'Vencido: generá uno nuevo';
+    el.classList.toggle('vencido', !s);
+    if (!s) { $('wc-codigo').classList.add('vencido'); clearInterval(tReloj); clearInterval(tPoll); }
+  };
+  const poll = async () => {
+    try {
+      const filas = await q(sb.from('wc_dispositivos').select('*').eq('camara_id', c.id));
+      const d = filas[0];
+      if (d && (d.auth_uid !== previo || new Date(d.emparejado_en).getTime() >= desde - 5000)) {
+        listo = true; clearInterval(tPoll); clearInterval(tReloj);
+        $('wc-codigo').classList.add('usado'); $('wc-cod-vence').textContent = '';
+        const ok = $('wc-cod-ok'); ok.hidden = false; ok.innerHTML = `✓ Emparejado: <b>${esc(d.nombre)}</b>`;
+      }
+    } catch (e) { console.warn('[poll emparejar]', e); }
+  };
+  await abrirModal({ titulo: '📱 Emparejar celular', html, botones: [{ texto: 'Cerrar', valor: true }],
+    alAbrir: () => { tReloj = setInterval(reloj, 1000); tPoll = setInterval(poll, 3000); } });
+  clearInterval(tReloj); clearInterval(tPoll);
+  st.wcEd = null; st.wcTab = 'celular';
+  await abrirVistaWc();
+  if (listo) toast('Celular emparejado');
+}
+async function desemparejarWc() {
+  const ed = st.wcEd, c = wcCam(ed.id), d = wcDisp(ed.id);
+  if (!d || !(await wcSinCambiosPendientes())) return;
+  if (!(await confirmar('Desemparejar celular', [{ tipo: 'menos', html: `<b>${esc(d.nombre)}</b> deja de ser la cámara <b>${esc(c.nombre)}</b>`,
+      aviso: 'El celular vuelve a la pantalla de emparejar en menos de un minuto. Para volver a usarlo hace falta un código nuevo.' }],
+      { textoOk: 'Desemparejar', peligro: true }))) return;
+  try {
+    await q(sb.from('wc_dispositivos').delete().eq('auth_uid', d.auth_uid));
+    try { await sb.rpc('wc_log_evento', { p_evento: 'desemparejado_admin', p_detalle: { camara_id: c.id, nombre: d.nombre } }); } catch (e) { /* el log es opcional */ }
+    toast('Celular desemparejado');
+  } catch (e) { console.error('[desemparejar]', e); avisar('No se pudo desemparejar', esc(textoError(e))); }
+  st.wcEd = null; await abrirVistaWc();
+}
+
+/* ── Calendarios ── */
+function wcCalOrig(k) { return st.wcEd.orig.cals.find(x => x.id === k.id); }
+function wcCalEnUso(id) { return W.disp.filter(d => d.calendario_id === id).length; }
+function renderFichaWcCal() {
+  const ed = st.wcEd, w = ed.w.cals;
+  const filas = w.map((k, i) => {
+    const o = wcCalOrig(k), uso = o ? wcCalEnUso(k.id) : 0;
+    const cmb = f => o && String(o[f]) !== String(k[f]) ? 'cambiado' : '';
+    const cls = !o ? 'nuevo' : k.borrar ? 'quitado' : (cmb('nombre') || cmb('ical_url') || cmb('activo') ? 'cambiado' : '');
+    const probable = o && !cls;
+    return `<tr class="${cls}">
+      <td><input class="inp ${cmb('nombre')}" data-wcc="${i}" data-k="nombre" value="${esc(k.nombre)}" maxlength="60" ${k.borrar ? 'disabled' : ''}></td>
+      <td><div class="wc-url"><input class="inp ${cmb('ical_url')}" data-wcc="${i}" data-k="ical_url" type="${ed.ver[i] ? 'text' : 'password'}" value="${esc(k.ical_url)}" autocomplete="off" spellcheck="false" ${k.borrar ? 'disabled' : ''}>
+        <button class="btn-icono" type="button" data-wcver="${i}" title="${ed.ver[i] ? 'Ocultar' : 'Mostrar'} la dirección">${ed.ver[i] ? '🙈' : '👁'}</button></div></td>
+      <td style="width:70px"><label class="check"><input type="checkbox" data-wcc="${i}" data-k="activo" ${k.activo ? 'checked' : ''} ${k.borrar ? 'disabled' : ''}></label></td>
+      <td style="width:80px">${o ? (uso ? `<span class="chip ok">${uso} celular${uso > 1 ? 'es' : ''}</span>` : '<span class="chip">no</span>') : '—'}</td>
+      <td class="acciones">
+        <button class="btn-icono" type="button" data-wcprobar="${i}" ${probable ? '' : `disabled title="${o ? 'Guardá los cambios antes de probar' : 'Guardalo antes de probar'}"`}>Probar</button>
+        ${k.borrar ? `<button class="btn-icono" type="button" data-wcvolver="${i}">Deshacer</button>`
+          : `<button class="btn-icono peligro" type="button" data-wcquitar="${i}" ${uso ? 'disabled title="Lo usa un celular: desactivalo o cambiale el calendario al celular"' : ''}>Quitar</button>`}</td></tr>`;
+  }).join('');
+  $('wc-ficha').innerHTML = `
+    <div class="ficha-scroll">
+      <div class="ficha-tit">📅 Calendarios <span class="chip app">WC</span></div>
+      <div class="ficha-sub">Calendarios de Google para el panel de casa del celular (eventos del día). Cada celular elige el suyo en su ficha → Celular.</div>
+      <div class="card">
+        ${w.length ? `<table class="tabla"><thead><tr><th style="width:220px">Nombre</th><th>Dirección secreta en formato iCal</th><th>Activo</th><th>En uso</th><th></th></tr></thead><tbody>${filas}</tbody></table>`
+          : '<div class="nota">No hay calendarios cargados todavía.</div>'}
+        <div class="agregar-fila">
+          <input class="inp" id="wc-cal-nombre" placeholder="Nombre (ej. Comidas)" maxlength="60" style="max-width:220px">
+          <input class="inp" id="wc-cal-url" type="password" placeholder="Dirección secreta en formato iCal (https://…/basic.ics)" autocomplete="off" style="max-width:none;flex:1">
+          <button class="btn sec" id="wc-cal-agregar" type="button">+ Agregar calendario</button>
+        </div>
+        <div class="nota">La dirección está en Google Calendar → Configuración del calendario → <b>Integrar el calendario</b> → <i>Dirección secreta en formato iCal</i>.
+          Es secreta: quien la tenga ve el calendario. Por eso acá se ve oculta (👁 para mostrarla) y nunca se manda al celular: la lee la Edge Function <b>wc-calendario</b>.</div>
+      </div>
+    </div>
+    <div class="barra-guardar">
+      <span class="estado" id="wc-estado"></span>
+      <button class="btn sec" id="wc-descartar" type="button">Descartar</button>
+      <button class="btn" id="wc-guardar" type="button">Guardar cambios</button>
+    </div>`;
+  const sec = $('wc-ficha');
+  sec.querySelectorAll('[data-wcc]').forEach(el => el.oninput = el.onchange = () => {
+    const i = +el.dataset.wcc, k = w[i], f = el.dataset.k, o = wcCalOrig(k);
+    k[f] = el.type === 'checkbox' ? el.checked : el.value;
+    if (o) {   // pinta la fila sin redibujar (no se pierde el foco)
+      const cmb = x => String(o[x]) !== String(k[x]);
+      if (el.type !== 'checkbox') el.classList.toggle('cambiado', cmb(f));
+      el.closest('tr').className = ['nombre', 'ical_url', 'activo'].some(cmb) ? 'cambiado' : '';
+      const p = sec.querySelector(`[data-wcprobar="${i}"]`), hay = ['nombre', 'ical_url', 'activo'].some(cmb);
+      p.disabled = hay; p.title = hay ? 'Guardá los cambios antes de probar' : '';
+    }
+    actualizarBarraWc();
+  });
+  sec.querySelectorAll('[data-wcver]').forEach(b => b.onclick = () => { const i = +b.dataset.wcver; ed.ver[i] = !ed.ver[i]; renderFichaWcCal(); });
+  sec.querySelectorAll('[data-wcquitar]').forEach(b => b.onclick = () => {
+    const i = +b.dataset.wcquitar;
+    if (!wcCalOrig(w[i])) { w.splice(i, 1); ed.ver = {}; } else w[i].borrar = true;
+    renderFichaWcCal();
+  });
+  sec.querySelectorAll('[data-wcvolver]').forEach(b => b.onclick = () => { delete w[+b.dataset.wcvolver].borrar; renderFichaWcCal(); });
+  sec.querySelectorAll('[data-wcprobar]').forEach(b => b.onclick = () => probarWcCal(w[+b.dataset.wcprobar]));
+  $('wc-cal-agregar').onclick = () => {
+    const nombre = $('wc-cal-nombre').value.trim(), url = $('wc-cal-url').value.trim();
+    if (!nombre) { toast('Falta el nombre del calendario.', true); return; }
+    if (!/^https:\/\//.test(url)) { toast('La dirección empieza con https://', true); return; }
+    if (w.find(k => !k.borrar && sinAcentos(k.nombre) === sinAcentos(nombre))) { toast('Ya hay un calendario con ese nombre.', true); return; }
+    w.push({ id: uuid(), nombre, ical_url: url, activo: true });
+    renderFichaWcCal();
+  };
+  $('wc-descartar').onclick = async () => {
+    if (!cambiosWc().length) return;
+    if (await confirmar('Descartar cambios', [], { intro: '¿Volver a lo guardado?', textoOk: 'Descartar', peligro: true })) abrirWc(WC_CAL);
+  };
+  $('wc-guardar').onclick = guardarWc;
+  actualizarBarraWc();
+}
+function cambiosWcCal() {
+  const ed = st.wcEd, out = [];
+  ed.w.cals.forEach(k => {
+    const o = wcCalOrig(k);
+    if (!o) { out.push({ tipo: 'mas', html: `<b>Calendario nuevo:</b> ${esc(k.nombre)}${k.activo ? '' : ' (inactivo)'}` }); return; }
+    if (k.borrar) { out.push({ tipo: 'menos', html: `<b>Se quita el calendario:</b> ${esc(o.nombre)}` }); return; }
+    if (o.nombre !== k.nombre) out.push({ tipo: 'cambio', html: `<b>Calendario · nombre:</b> ${esc(o.nombre)} → <b>${esc(k.nombre)}</b>` });
+    if (o.ical_url !== k.ical_url) out.push({ tipo: 'cambio', html: `<b>${esc(k.nombre)} · dirección iCal:</b> se reemplaza`, aviso: 'Los celulares que lo usan toman la nueva en su próxima actualización (hasta 15 min).' });
+    if (o.activo !== k.activo) out.push({ tipo: k.activo ? 'mas' : 'menos', html: `<b>${esc(k.nombre)}:</b> ${k.activo ? 'se activa' : 'queda inactivo'}`,
+      aviso: !k.activo && wcCalEnUso(k.id) ? 'Los celulares que lo usan dejan de mostrar el calendario.' : '' });
+  });
+  return out;
+}
+function validarWcCal() {
+  const vistos = {};
+  for (const k of st.wcEd.w.cals.filter(x => !x.borrar)) {
+    if (vacio(k.nombre) || k.nombre.trim().length > 60) return 'Cada calendario necesita un nombre (hasta 60 caracteres).';
+    if (!/^https:\/\/\S+$/.test(k.ical_url.trim())) return `${k.nombre}: la dirección empieza con https:// y no lleva espacios.`;
+    const n = sinAcentos(k.nombre.trim()); if (vistos[n]) return `Hay dos calendarios llamados "${k.nombre}".`; vistos[n] = 1;
+  }
+  return '';
+}
+async function guardarWcCal() {
+  const ed = st.wcEd, cambios = cambiosWcCal(); if (!cambios.length) return;
+  const err = validarWcCal(); if (err) { avisar('No se puede guardar', esc(err)); return; }
+  if (!(await confirmar('Guardar calendarios', cambios, { textoOk: 'Guardar' }))) return;
+  const btn = $('wc-guardar'); btn.disabled = true; btn.textContent = 'Guardando…';
+  try {
+    for (const k of ed.w.cals) {
+      const o = wcCalOrig(k), fila = { nombre: k.nombre.trim(), ical_url: k.ical_url.trim(), activo: !!k.activo };
+      if (!o) await q(sb.from('wc_calendarios').insert({ id: k.id, ...fila }));
+      else if (k.borrar) await q(sb.from('wc_calendarios').delete().eq('id', k.id));
+      else if (o.nombre !== k.nombre || o.ical_url !== k.ical_url || o.activo !== k.activo) await q(sb.from('wc_calendarios').update(fila).eq('id', k.id));
+    }
+    toast('Calendarios guardados');
+  } catch (e) {
+    console.error('[guardarWcCal]', e);
+    await avisar('No se pudo guardar', esc(textoError(e)) + '<div class="nota">Si una parte llegó a guardarse, la ficha se recarga con lo que quedó en la base.</div>');
+  }
+  st.wcEd = null; st.wcSel = WC_CAL; await abrirVistaWc();
+}
+async function probarWcCal(k) {
+  abrirModal({ titulo: '📅 Probar · ' + esc(k.nombre), html: '<div class="cargando" style="margin:24px auto" id="wc-prueba"><div class="spinner"></div>Leyendo el calendario…</div>',
+    botones: [{ texto: 'Cerrar', valor: true }] });
+  let html;
+  try {
+    const { data, error } = await sb.functions.invoke(WC_FN_CALENDARIO, { body: { calendario_id: k.id } });
+    if (error) throw error;
+    if (!data || !data.ok) throw new Error((data && data.error) || 'La función no devolvió eventos');
+    const ev = data.eventos || [];
+    html = `<div class="chip ok" style="margin-bottom:8px">✓ Se lee bien · ${esc(data.fecha || 'hoy')} · ${ev.length} evento${ev.length === 1 ? '' : 's'}</div>` +
+      (ev.length ? `<table class="tabla"><tbody>${ev.map(e => `<tr><td style="width:110px"><b>${e.todo_el_dia ? 'Todo el día' : esc((e.inicio || '…') + (e.fin ? '–' + e.fin : ''))}</b></td>
+        <td>${esc(e.titulo)}${e.lugar ? `<div class="nota" style="margin:0">${esc(e.lugar)}</div>` : ''}</td></tr>`).join('')}</tbody></table>`
+        : '<div class="nota">El calendario se lee bien, pero hoy no tiene eventos.</div>');
+  } catch (e) {
+    console.error('[probar calendario]', e);
+    let msg = textoError(e);
+    try { if (e && e.context && e.context.json) { const j = await e.context.json(); if (j && j.error) msg = j.error; } } catch (e2) { /* sin detalle */ }
+    html = `<div class="err">No se pudo leer: ${esc(msg)}</div><div class="nota">Revisá que la dirección sea la <b>secreta en formato iCal</b> (termina en <i>basic.ics</i>) y que la Edge Function <b>wc-calendario</b> esté publicada.</div>`;
+  }
+  const el = $('modal-body'); if (el && $('wc-prueba')) el.innerHTML = html;
 }
 
 /* ════════════════════════════════════════════════════════
@@ -3240,6 +3839,8 @@ window.onload = async function () {
   $('personas-buscar').oninput = renderListaPersonas;
   $('personas-ver-inactivas').onchange = renderListaPersonas;
   $('personas-nueva').onclick = nuevaPersona;
+  $('wc-nueva').onclick = nuevaCamaraWc;
+  $('wc-refrescar').onclick = refrescarWc;
 
   const { data } = await sb.auth.getSession();
   if (data.session) await entrarConSesion(data.session); else mostrarLogin();
