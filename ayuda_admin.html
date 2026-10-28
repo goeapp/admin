@@ -5,10 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title id="page-title">GOE Admin — Ayuda</title>
 <!--
-  ayuda_admin_v1_1.html — Ayuda de GOE Admin v1.6 (28-oct-2026)
+  ayuda_admin_v1_2.html — Ayuda de GOE Admin v1.7 (28-oct-2026)
   Repo: goeapp/admin → https://goeapp.github.io/admin/ayuda_admin.html (subir como ayuda_admin.html)
   Se abre desde el botón "?" del encabezado de GOE Admin v1.6.
   v1.1 — capítulo WC (WebCam DMS); Personas → Apps con WC; CO: coordenadas a 7 decimales.
+  v1.2 — WC: 📻 Radios y el tilde Radio de cada celular.
   Mismo motor que instructivo_libroobra_v1_3: el texto está todo en CONTENIDO; el render no se toca.
 -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>">
@@ -147,7 +148,7 @@ const CONTENIDO = {
   paginaTitulo: "GOE Admin — Ayuda",
 
   header: {
-    eyebrow:   "Ayuda · GOE Admin v1.6",
+    eyebrow:   "Ayuda · GOE Admin v1.7",
     titulo:    "GOE <span>Admin</span>",
     subtitulo: "Qué hacer primero en cada módulo, paso a paso",
   },
@@ -348,7 +349,7 @@ const CONTENIDO = {
     },
     {
       id: "wc", icon: "📷", nombre: "WC · WebCam",
-      para: "Cámaras, el celular de cada una (con su configuración) y los calendarios del panel de casa.",
+      para: "Cámaras, el celular de cada una (con su configuración), los calendarios y las radios del panel de casa.",
       antes: [ "Quién mira las cámaras: en <b>Personas → Apps</b>, tildá <b>entra</b> en WC.",
                "Para el calendario: la <b>dirección secreta en formato iCal</b> del calendario de Google (Configuración del calendario → Integrar el calendario)." ],
       pasos: [
@@ -356,6 +357,11 @@ const CONTENIDO = {
           sub: [ "Escribí el nombre (ej. Comidas), pegá la dirección iCal y <b>+ Agregar calendario</b> → <b>Guardar cambios</b>.",
                  "<b>Probar</b> muestra los eventos de hoy: así sabés que la dirección anda.",
                  "La dirección se ve oculta: tocá 👁 para verla." ] },
+        { titulo: "📻 Radios (si querés radio en el lavadero)", detalle: "Elegí <b>📻 Radios</b> en la lista. Son las mismas para todos los celulares:",
+          sub: [ "Abajo, en <b>Buscar en Radio Browser</b>: escribí el nombre (ej. Mitre) → <b>Buscar</b>. Con <b>Solo Argentina</b> tildado busca solo radios argentinas.",
+                 "Usá las que dicen <b>✓ funciona en la app</b>. <b>▶ Probar</b> la hace sonar en la compu; <b>+ Agregar</b> la suma a la lista.",
+                 "Arriba podés cambiarle el nombre (como se ve en el celular), ordenarlas arrastrando <b>⋮⋮</b>, desactivarlas o quitarlas → <b>Guardar cambios</b>.",
+                 "En el celular se ven de a 4, en este orden, con flechas para pasar a las siguientes." ] },
         { titulo: "+ Nueva cámara", detalle: "<b>Código</b> (MAYÚSCULAS y números, ej. LAV), <b>nombre</b> (ej. Lavadero) y orden → <b>Crear cámara</b>." },
         { titulo: "Emparejar el celular", detalle: "En la ficha de la cámara → solapa <b>Celular</b> → <b>Emparejar</b>:",
           sub: [ "Aparece un código de 6 dígitos que vale <b>15 minutos</b>.",
@@ -363,7 +369,7 @@ const CONTENIDO = {
                  "La ventana avisa <b>✓ Emparejado</b> cuando el celular entró. Arranca transmitiendo solo." ] },
         { titulo: "Configurar el celular", detalle: "En la misma solapa <b>Celular</b>:",
           sub: [ "<b>Arranque automático</b>, <b>cámara inicial</b> (trasera o frontal) y <b>calidad</b> (alta, media o baja).",
-                 "Panel de casa: <b>reloj</b>, <b>clima</b> y <b>calendario del día</b> con el <b>calendario asignado</b>.",
+                 "Panel de casa: <b>reloj</b>, <b>clima</b>, <b>calendario del día</b> con el <b>calendario asignado</b> y <b>radio</b>.",
                  "<b>Guardar cambios</b>: el celular lo toma en vivo, sin recargar." ] },
         { titulo: "Estado y registro", detalle: "En la lista, el punto de cada cámara: 🟢 en línea · 🔴 sin señal (con hace cuánto) · gris sin celular o inactiva. <b>↻ Estados</b> los vuelve a leer.",
           sub: [ "La solapa <b>Registro</b> muestra los últimos 100 eventos de la cámara (conexiones, cámara abierta, emparejado…). Sirve para diagnosticar." ] },
@@ -375,6 +381,7 @@ const CONTENIDO = {
         "El código de la cámara no se cambia. Para dejar de usarla, destildá <b>Activa</b>: deja de verse en el visor y no se puede emparejar.",
         "Un calendario que usa un celular no se quita: desactivalo o cambiale el calendario al celular.",
         "La calidad <b>baja</b> ayuda cuando el visor mira por 4G y el video se corta.",
+        "Radios: el ✗ <b>no funciona</b> es porque transmiten solo por http (el celular las bloquea). La radio suena solo en el celular del lavadero, al tocar ▶: no se manda al visor.",
       ],
     },
     {
@@ -398,7 +405,7 @@ const CONTENIDO = {
   ],
 
   footer: {
-    izquierda: "GOE Admin — Ayuda · v1.1 (para GOE Admin v1.6)",
+    izquierda: "GOE Admin — Ayuda · v1.2 (para GOE Admin v1.7)",
     derecha:   "Octubre 2026",
   },
 };
